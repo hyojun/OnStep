@@ -23,6 +23,7 @@ all others (Teensy3.x, etc.) at 2mS/byte (500 Bps.)
 */
 
 #include "Stream.h"
+#include "Config.h"
 
 #if !defined(ST4RAw) && !defined(ST4DEs) && !defined(ST4DEn) && !defined(ST4RAe)
   #warning "ST4 interface pins aren't defined, using defaults."
@@ -40,6 +41,7 @@ class Sst4 : public Stream
   public:
     void begin(long baudRate);
     void end();
+    void paused(bool state);
     bool active();
     virtual size_t write(uint8_t);
     virtual size_t write(const uint8_t *, size_t);
@@ -67,4 +69,3 @@ class Sst4 : public Stream
 };
 
 extern Sst4 SerialST4;
-

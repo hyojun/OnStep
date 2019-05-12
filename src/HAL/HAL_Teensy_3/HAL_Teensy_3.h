@@ -3,15 +3,38 @@
 // We define a more generic symbol, in case more Teensy boards based on different lines are supported
 #define __ARM_Teensy3__
 
-// Lower limit (fastest) step rate in uS for this platform
+// Lower limit (fastest) step rate in uS for this platform, width of step pulse, and set HAL_FAST_PROCESSOR is needed
 #if defined(__MK64FX512__) 
-  #define MaxRate_LowerLimit 12
+  #define HAL_MAXRATE_LOWER_LIMIT 12
+  #define HAL_PULSE_WIDTH 500
   #define HAL_FAST_PROCESSOR
 #elif defined(__MK66FX1M0__)
-  #define MaxRate_LowerLimit 4
+  #if (F_CPU>=240000000)
+    #define HAL_MAXRATE_LOWER_LIMIT 2
+    #define HAL_PULSE_WIDTH 260
+  #elif (F_CPU>=180000000)
+    #define HAL_MAXRATE_LOWER_LIMIT 2.6
+    #define HAL_PULSE_WIDTH 400
+  #else
+    #define HAL_MAXRATE_LOWER_LIMIT 4.8
+    #define HAL_PULSE_WIDTH 500
+  #endif
   #define HAL_FAST_PROCESSOR
 #else
-  #define MaxRate_LowerLimit 16
+  // Teensy3.2,3.1,etc.
+  #if (F_CPU>=120000000)
+    #define HAL_MAXRATE_LOWER_LIMIT 10
+    #define HAL_PULSE_WIDTH 800
+  #elif (F_CPU>=96000000)
+    #define HAL_MAXRATE_LOWER_LIMIT 12
+    #define HAL_PULSE_WIDTH 900
+  #elif (F_CPU>=72000000)
+    #define HAL_MAXRATE_LOWER_LIMIT 14
+    #define HAL_PULSE_WIDTH 1000
+  #else
+    #define HAL_MAXRATE_LOWER_LIMIT 28
+    #define HAL_PULSE_WIDTH 1500
+  #endif
 #endif
 
 // New symbols for the Serial ports so they can be remapped if necessary -----------------------------
@@ -33,7 +56,9 @@
 #endif
 
 // Non-volatile storage ------------------------------------------------------------------------------
-#if defined(NV_AT24C32)
+#if defined(NV_AT24C32_PLUS)
+  #include "../drivers/NV_I2C_EEPROM_AT24C32_PLUS.h"
+#elif defined(NV_AT24C32)
   #include "../drivers/NV_I2C_EEPROM_AT24C32.h"
 #elif defined(NV_MB85RC256V)
   #include "../drivers/NV_I2C_FRAM_MB85RC256V.h"
@@ -47,6 +72,7 @@
 //--------------------------------------------------------------------------------------------------
 // General purpose initialize for HAL
 void HAL_Init(void) {
+  analogReadResolution(10);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -60,10 +86,11 @@ float HAL_MCU_Temperature(void) {
   int Tpin=38;
 #endif
   // delta of -1.715 mV/C where 25C measures 719 mV
-  analogReadResolution(12);
-  float v=(analogRead(Tpin)/4096.0)*3.3;
+//  analogReadResolution(12);
+//  delayMicroseconds(10);
+  float v=(analogRead(Tpin)/1024.0)*3.3;
   float t=(-(v-0.719)/0.001715)+25.0;
-  analogReadResolution(10);
+//  analogReadResolution(10);
   return t;
 }
 

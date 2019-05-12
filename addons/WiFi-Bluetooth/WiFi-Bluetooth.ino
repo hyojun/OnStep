@@ -2,7 +2,7 @@
  * Title       OnStep WiFi Server
  * by          Howard Dutton
  *
- * Copyright (C) 2016 to 2018 Howard Dutton
+ * Copyright (C) 2016 to 2019 Howard Dutton
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@
  *
  * Description
  *
- * ESP8266-01 OnStep control
+ * ESP8266 OnStep control
  *
  */
 
@@ -37,7 +37,7 @@
 #define FirmwareTime          __TIME__
 #define FirmwareVersionMajor  "1"
 #define FirmwareVersionMinor  "6"
-#define FirmwareVersionPatch  "c"
+#define FirmwareVersionPatch  "e"
 
 #define Version FirmwareVersionMajor "." FirmwareVersionMinor FirmwareVersionPatch
 

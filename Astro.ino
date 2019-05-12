@@ -8,9 +8,9 @@ boolean dateToDouble(double *JulianDay, char *date) {
   
   if (strlen(date)!= 8) return false;
 
-  m[0]=*date++; m[1]=*date++; m[2]=0; atoi2(m,&m1);
-  if (*date++!='/') return false; d[0]=*date++; d[1]=*date++; d[2]=0; atoi2(d,&d1);
-  if (*date++!='/') return false; y[0]=*date++; y[1]=*date++; y[2]=0; atoi2(y,&y1);
+  m[0]=*date++; m[1]=*date++; m[2]=0; if (!atoi2(m,&m1,false)) return false;
+  if (*date++!='/') return false; d[0]=*date++; d[1]=*date++; d[2]=0; if (!atoi2(d,&d1,false)) return false;
+  if (*date++!='/') return false; y[0]=*date++; y[1]=*date++; y[2]=0; if (!atoi2(y,&y1,false)) return false;
   if ((m1<1) || (m1>12) || (d1<1) || (d1>31) || (y1<0) || (y1>99)) return false;
   if (y1>11) y1=y1+2000; else y1=y1+2100;
   
@@ -18,32 +18,38 @@ boolean dateToDouble(double *JulianDay, char *date) {
   return true;
 }
 
-// convert string in format HH:MM:SS to floating point
+// convert string in format HH:MM:SS to double
 // (also handles)           HH:MM.M
-// (also handles)           HH:MM:SS.ss
+// (also handles)           HH:MM:SS
+// (also handles)           HH:MM:SS.SSSS
 boolean hmsToDouble(double *f, char *hms) {
-  char h[3],m[5],s[3],sd[3];
-  int  h1,m1,m2=0,s1=0,s2=0;
-  
+  char h[3],m[5];
+  int  h1,m1,m2=0;
+  double s1=0;
+
   while (*hms==' ') hms++; // strip prefix white-space
 
-  if (highPrecision) { if ((strlen(hms)!= 8) && (strlen(hms)!= 11)) return false; } else if (strlen(hms)!= 7) return false;
+  int actualLen=strlen(hms);
+  if (actualLen>13) hms[13]=0; // maximum length
+  
+  if (highPrecision) { if ((strlen(hms)!=8) && (strlen(hms)<10)) return false; } else if (strlen(hms)!= 7) return false;
 
-  h[0]=*hms++; h[1]=*hms++; h[2]=0; atoi2(h,&h1);
+  h[0]=*hms++; h[1]=*hms++; h[2]=0; if (!atoi2(h,&h1,false)) return false;
   if (highPrecision) {
-    if (*hms++!=':') return false; m[0]=*hms++; m[1]=*hms++; m[2]=0; atoi2(m,&m1);
-    if (*hms++!=':') return false; s[0]=*hms++; s[1]=*hms++; s[2]=0; atoi2(s,&s1);
-    if (*hms++=='.') { sd[0]=*hms++; sd[1]=*hms++; sd[2]=0; atoi2(sd,&s2); }
+    if (*hms++!=':') return false; m[0]=*hms++; m[1]=*hms++; m[2]=0; if (!atoi2(m,&m1,false)) return false;
+    if (*hms++!=':') return false;
+    if (!atof2(hms,&s1,false)) return false;
   } else {
-    if (*hms++!=':') return false; m[0]=*hms++; m[1]=*hms++; m[2]=0; atoi2(m,&m1);
+    if (*hms++!=':') return false; m[0]=*hms++; m[1]=*hms++; m[2]=0; if (!atoi2(m,&m1,false)) return false;
     if (*hms++!='.') return false; m2=(*hms++)-'0';
   }
-  if ((h1<0) || (h1>23) || (m1<0) || (m1>59) || (m2<0) || (m2>9) || (s1<0) || (s1>59) || (s2<0) || (s2>99)) return false;
+  if ((h1<0) || (h1>23) || (m1<0) || (m1>59) || (m2<0) || (m2>9) || (s1<0) || (s1>59.9999)) return false;
 
-  *f=h1+m1/60.0+m2/600.0+s1/3600.0+s2/360000.0;
+  *f=h1+m1/60.0+m2/600.0+s1/3600.0;
   return true;
 }
 
+// convert double to string in a variety of formats (as above) 
 boolean doubleToHms(char *reply, double *f, boolean hp) {
   double h1,m1,f1,s1;
 
@@ -67,87 +73,86 @@ boolean doubleToHms(char *reply, double *f, boolean hp) {
   return true;
 }
 
+// convert double to string in format HH:MM:SS.SSSS
 boolean doubleToHmsd(char *reply, double *f) {
   double h1,m1,f1,s1,sd;
 
-  f1=fabs(*f)+0.00000139; // round to 0.005 sec
+  f1=fabs(*f)+0.0000000139; // round to 0.00005 sec
 
   h1=floor(f1);
   m1=(f1-h1)*60;
   s1=(m1-floor(m1))*60;
-  sd=(s1-floor(s1))*100;
-  char s[]="%s%02d:%02d:%02d.%02d";
+  sd=(s1-floor(s1))*10000;
+  char s[]="%s%02d:%02d:%02d.%04d";
   char sign[2]="";
-  if (((s1!=0) || (m1!=0) || (h1!=0)) && (*f<0.0)) strcpy(sign,"-");
+  if (((sd!=0) || (s1!=0) || (m1!=0) || (h1!=0)) && (*f<0.0)) strcpy(sign,"-");
   sprintf(reply,s,sign,(int)h1,(int)m1,(int)s1,(int)sd);
 
   return true;
 }
 
-// convert string in format sDD:MM:SS to floating point
-// (also handles)           sDD:MM:SS.s
+// convert string in format sDD:MM:SS to double
+// (also handles)           sDD:MM:SS.SSS
 //                          DDD:MM:SS
 //                          sDD:MM
 //                          DDD:MM
 //                          sDD*MM
 //                          DDD*MM
 boolean dmsToDouble(double *f, char *dms, boolean sign_present) {
-  char d[4],m[5],s[3],sd[2];
-  int d1, m1, s1=0, s2=0;
+  char d[4], m[5];
+  int d1, m1;
+  double s1=0;
   int lowLimit=0, highLimit=360;
-  int checkLen,checkLen1;
+  int checkLen,actualLen;
   double sign = 1.0;
   boolean secondsOff = false;
 
   while (*dms==' ') dms++; // strip prefix white-space
+  if (strlen(dms)>13) dms[13]=0; // maximum length
 
-  checkLen1=strlen(dms);
+  actualLen=strlen(dms);
 
   // determine if the seconds field was used and accept it if so
   if (highPrecision) { 
     checkLen=9;
-    if (checkLen1 != checkLen) {
+    if (actualLen != checkLen) {
       checkLen=11;
-      if (checkLen1 != checkLen) return false;
+      if (!(actualLen >= checkLen)) return false;
     }
   } else {
     checkLen=6;
-    if (checkLen1 != checkLen) {
-      if (checkLen1==9) { secondsOff=false; checkLen=9; } else return false;
+    if (actualLen != checkLen) {
+      if (actualLen==9) { secondsOff=false; checkLen=9; } else return false;
     } else secondsOff = true;
   }
 
   // determine if the sign was used and accept it if so
   if (sign_present) {
     if (*dms=='-') sign=-1.0; else if (*dms=='+') sign=1.0; else return false; 
-    dms++; d[0]=*dms++; d[1]=*dms++; d[2]=0; if (!atoi2(d,&d1)) return false;
+    dms++; d[0]=*dms++; d[1]=*dms++; d[2]=0; if (!atoi2(d,&d1,false)) return false;
   } else {
-    d[0]=*dms++; d[1]=*dms++; d[2]=*dms++; d[3]=0; if (!atoi2(d,&d1)) return false;
+    d[0]=*dms++; d[1]=*dms++; d[2]=*dms++; d[3]=0; if (!atoi2(d,&d1,false)) return false;
   }
 
   // make sure the seperator is an allowed character
   if ((*dms!=':') && (*dms!='*') && (*dms!=char(223))) return false; else dms++;
 
-  m[0]=*dms++; m[1]=*dms++; m[2]=0; if (!atoi2(m,&m1)) return false;
+  m[0]=*dms++; m[1]=*dms++; m[2]=0; if (!atoi2(m,&m1,false)) return false;
 
   if ((highPrecision) && (!secondsOff)) {
     // make sure the seperator is an allowed character
     if (*dms++!=':') return false; 
-    s[0]=*dms++; s[1]=*dms++; s[2]=0; atoi2(s,&s1);
-    // get the tenths second if present
-    if (checkLen1==11) {
-      if (*dms++!='.') return false;
-      sd[0]=*dms++; sd[1]=0; atoi2(sd,&s2);
-    }
+    if (!atof2(dms,&s1,false)) return false;
   }
 
   if (sign_present) { lowLimit=-90; highLimit=90; }
-  if ((d1<lowLimit) || (d1>highLimit) || (m1<0) || (m1>59) || (s1<0) || (s1>59) || (s2<0) || (s2>9)) return false;
+  if ((d1<lowLimit) || (d1>highLimit) || (m1<0) || (m1>59) || (s1<0) || (s1>59.999)) return false;
   
-  *f=sign*(d1+m1/60.0+s1/3600.0+s2/36000.0);
+  *f=sign*(d1+m1/60.0+s1/3600.0);
   return true;
 }
 
+// convert double to string in a variety of formats (as above) 
 boolean doubleToDms(char *reply, double *f, boolean fullRange, boolean signPresent) {
   char sign[]="+";
   int  o=0,d1,s1=0;
@@ -180,6 +185,7 @@ boolean doubleToDms(char *reply, double *f, boolean fullRange, boolean signPrese
   return true;
 }
 
+// convert double to string in format sDD:MM:SS.SSS
 boolean doubleToDmsd(char *reply, double *f) {
   char sign[]="+";
   double d1,m1,s1,s2,f1;
@@ -188,19 +194,20 @@ boolean doubleToDmsd(char *reply, double *f) {
   // setup formatting, handle adding the sign
   if (f1<0) { f1=-f1; sign[0]='-'; }
 
-  f1=f1+0.0000139; // round to 0.05 arc-second
+  f1=f1+0.000000139; // round to 0.0005 arc-second
   d1=floor(f1);
   m1=(f1-d1)*60.0;
   s1=(m1-floor(m1))*60.0;
-  s2=(s1-floor(s1))*10.0;
+  s2=(s1-floor(s1))*1000.0;
   
-  char s[]="+%02d*%02d:%02d.%01d";
+  char s[]="+%02d*%02d:%02d.%03d";
   if (sign[0]=='-') { s[0]='-'; }
   sprintf(reply,s,(int)d1,(int)m1,(int)s1,(int)s2);
 
   return true;
 }
 
+// convert timezone to string in format sHHH:MM[:SS]
 void timeZoneToHM(char *reply, double tz) {
   double f=fabs(frac(tz));
   sprintf(reply,"%+03d",(int)tz);
@@ -345,6 +352,48 @@ void horToEqu(double Alt, double Azm, double *HA, double *Dec) {
   *Dec = *Dec*Rad;
 }
 
+// returns the amount of refraction (in arcminutes) at the given true altitude (degrees), pressure (millibars), and temperature (celsius)
+double trueRefrac(double Alt, double Pressure=1010.0, double Temperature=10.0) {
+  double TPC=(Pressure/1010.0) * (283.0/(273.0+Temperature));
+  double r=( ( 1.02*cot( (Alt+(10.3/(Alt+5.11)))/Rad ) ) ) * TPC;  if (r<0.0) r=0.0;
+  return r;
+}
+
+// returns the amount of refraction (in arcminutes) at the given apparent altitude (degrees), pressure (millibars), and temperature (celsius)
+double apparentRefrac(double Alt, double Pressure=1010.0, double Temperature=10.0) {
+  double r=trueRefrac(Alt,Pressure,Temperature);
+  r=trueRefrac(Alt-(r/60.0),Pressure,Temperature);
+  return r;
+}
+
+// converts from the "Topocentric" to "Observed"
+void topocentricToObservedPlace(double *RA, double *Dec) {
+  double Alt,Azm;
+  double h=LST()*15.0-*RA;
+  double d=*Dec;
+  // within about 1/20 arc-second of NCP
+  if (fabs(d-90.0)<0.00001) { Azm=0.0; Alt=latitude; } else 
+  // within about 1/20 arc-second of SCP
+  if (fabs(d+90.0)<0.00001) { Azm=180.0; Alt=-latitude; } else equToHor(h,d,&Alt,&Azm);
+  Alt = Alt+trueRefrac(Alt)/60.0;
+  horToEqu(Alt,Azm,&h,&d);
+  *RA=degRange(LST()*15.0-h); *Dec=d;
+}
+
+// converts from the "Observed" to "Topocentric"
+void observedPlaceToTopocentric(double *RA, double *Dec) {
+  double Alt,Azm;
+  double h=LST()*15.0-*RA;
+  double d=*Dec;
+  // within about 1/20 arc-second of the "refracted" NCP
+  if (fabs(d-90.0)<0.00001) { Azm=0.0; Alt=latitude; } else
+  // within about 1/20 arc-second of the "refracted" SCP
+  if (fabs(d+90.0)<0.00001) { Azm=180.0; Alt=-latitude; } else equToHor(h,d,&Alt,&Azm);
+  Alt = Alt-apparentRefrac(Alt)/60.0;
+  horToEqu(Alt,Azm,&h,&d);
+  *RA=degRange(LST()*15.0-h); *Dec=d;
+}
+
 // -----------------------------------------------------------------------------------------------------------------------------
 // Tracking rate control
 
@@ -387,9 +436,9 @@ void setDeltaTrackingRate() {
     if ((abs(d1)<ArcSecPerStepAxis1/3600.0) && (abs(d2)<ArcSecPerStepAxis2/3600.0)) {
       trackingSyncSeconds=0;
     } else {
-      f1=(d1*3600.0)/60.0; if (f1<-5.0) f1=-5.0; if (f1>5.0) f1=5.0;
+      f1=(d1*3600.0)/120.0; if (f1<-5.0) f1=-5.0; if (f1>5.0) f1=5.0;
       if (abs(d1)<ArcSecPerStepAxis1/3600.0) f1=0.0;
-      f2=(d2*3600.0)/60.0; if (f2<-5.0) f2=-5.0; if (f2>5.0) f2=5.0;
+      f2=(d2*3600.0)/120.0; if (f2<-5.0) f2=-5.0; if (f2>5.0) f2=5.0;
       if (abs(d2)<ArcSecPerStepAxis2/3600.0) f2=0.0;
     }
   }
@@ -417,6 +466,18 @@ void setTrackingRate(double r) {
 
 double getTrackingRate() {
   return _currentRate;
+}
+
+double getTrackingRate60Hz() {
+  double f;
+  if (trackingState==TrackingSidereal) {
+#ifdef MOUNT_TYPE_ALTAZM
+    f=getTrackingRate()*1.00273790935*60.0; 
+#else
+    cli(); f=(trackingTimerRateAxis1*1.00273790935)*60.0; sei();
+#endif
+  } else f=0.0;
+  return f;
 }
 
 double getStepsPerSecondAxis1() {
@@ -484,20 +545,6 @@ boolean doFastAltCalc() {
 // -----------------------------------------------------------------------------------------------------------------------------
 // Refraction adjusted tracking
 
-// returns the amount of refraction (in arcminutes) at the given true altitude (degrees), pressure (millibars), and temperature (celsius)
-double trueRefrac(double Alt, double Pressure=1010.0, double Temperature=10.0) {
-  double TPC=(Pressure/1010.0) * (283.0/(273.0+Temperature));
-  double r=( ( 1.02*cot( (Alt+(10.3/(Alt+5.11)))/Rad ) ) ) * TPC;  if (r<0.0) r=0.0;
-  return r;
-}
-
-// returns the amount of refraction (in arcminutes) at the given apparent altitude (degrees), pressure (millibars), and temperature (celsius)
-double apparentRefrac(double Alt, double Pressure=1010.0, double Temperature=10.0) {
-  double r=trueRefrac(Alt,Pressure,Temperature);
-  r=trueRefrac(Alt-(r/60.0),Pressure,Temperature);
-  return r;
-}
-
 // Alternate tracking rate calculation method
 double ztr(double a) {
   if (a>89.8) return 14.9998;
@@ -517,9 +564,9 @@ double ztr(double a) {
 
 // Distance in arc-min ahead of and behind the current Equ position, used for rate calculation
 #ifdef HAL_NO_DOUBLE_PRECISION
-#define RefractionRateRange 30
+#define RefractionRateRange 30.0
 #else
-#define RefractionRateRange 10
+#define RefractionRateRange 1.0
 #endif
 
 boolean doRefractionRateCalc() {
@@ -706,58 +753,12 @@ boolean doHorRateCalc() {
 #endif
 
 // -----------------------------------------------------------------------------------------------------------------------------
-// Misc. numeric conversion
-
-double timeRange(double t) {
-  while (t>=24.0) t-=24.0;
-  while (t<  0.0) t+=24.0;
-  return t;
-}
-
-double haRange(double d) {
-  while (d>=180.0) d-=360.0;
-  while (d<-180.0) d+=360.0;
-  return d;
-}
-
-double degRange(double d) {
-  while (d>=360.0) d-=360.0;
-  while (d<  0.0)  d+=360.0;
-  return d;
-}
-
-double dist(double a, double b) {
-  if (a>b) return a-b; else return b-a;
-}
-
-double angDist(double h, double d, double h1, double d1) {
-  return acos(sin(d/Rad)*sin(d1/Rad)+cos(d/Rad)*cos(d1/Rad)*cos((h1-h)/Rad))*Rad;
-}
-
-// integer numeric conversion with error checking
-boolean atoi2(char *a, int *i) {
-  char *conv_end;
-  long l=strtol(a,&conv_end,10);
-  
-  if ((l<-32767) || (l>32768) || (&a[0]==conv_end)) return false;
-  *i=l;
-  return true;
-}
-
-double frac(double v) {
-  return v - ((long)v);
-}
-
-double cot(double n) {
-  return 1.0/tan(n);
-}
-
 // Acceleration rate calculation
 void setAccelerationRates(double maxRate) {
   
   // set the new guide acceleration rate
-  slewRateX  = (RateToXPerSec/(maxRate/16.0))*5.0;       // 5x for exponential factor average rate
-  slewRateX = slewRateX*((MaxRate/2.0)/(maxRate/16.0));  // scale with maxRate so DegreesForAcceleration and DegreesForRapidStop are approximately correct
+  slewRateX  = (RateToXPerSec/(maxRate/16.0))*5.0;         // 5x for exponential factor average rate
+  slewRateX = slewRateX*((MaxRateDef/2.0)/(maxRate/16.0)); // scale with maxRate so DegreesForAcceleration and DegreesForRapidStop are approximately correct
   accXPerSec = slewRateX/DegreesForAcceleration;
   guideRates[9]=RateToASPerSec/(maxRate/16.0); guideRates[8]=guideRates[9]/2.0;
   activeGuideRate=GuideRateNone;
@@ -770,40 +771,4 @@ void setAccelerationRates(double maxRate) {
 
   // slewSpeed is in degrees per second
   slewSpeed=(1000000.0/(maxRate/16L))/StepsPerDegreeAxis1;
-}
-
-// Sound/buzzer
-void soundAlert() {
-  if (soundEnabled) {
-    #ifdef BUZZER_ON
-      digitalWrite(TonePin,HIGH); buzzerDuration=100;
-    #endif
-    #ifdef BUZZER
-      tone(TonePin,BUZZER,1000);
-    #endif
-  }
-}
-
-// Sound/beep
-void soundBeep() {
-  if (soundEnabled) {
-    #ifdef BUZZER_ON
-      digitalWrite(TonePin,HIGH); buzzerDuration=25;
-    #endif
-    #ifdef BUZZER
-      tone(TonePin,BUZZER,250);
-    #endif
-  }
-}
-
-// Sound/click
-void soundClick() {
-  if (soundEnabled) {
-    #ifdef BUZZER_ON
-      digitalWrite(TonePin,HIGH); buzzerDuration=5;
-    #endif
-    #ifdef BUZZER
-      tone(TonePin,BUZZER,50);
-    #endif
-  }
 }

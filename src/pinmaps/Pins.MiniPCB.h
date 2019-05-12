@@ -14,6 +14,11 @@
 #endif
 #define Aux5_Analog
 
+// Optional one wire bus
+#ifndef OneWirePin
+#define OneWirePin    24    // Pin 24
+#endif
+
 // The PEC index sense is a logic level input, resets the PEC index on rising edge then waits for 60 seconds before allowing another reset
 #define PecPin        23
 #define AnalogPecPin  23    // Pin 23 (PEC Sense, analog or digital)

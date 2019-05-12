@@ -240,6 +240,11 @@ void processCommands() {
       if ((command[0]=='C') && ((command[1]=='S') || command[1]=='M'))  {
         if ((parkStatus==NotParked) && (trackingState!=TrackingMoveTo)) {
 
+          newTargetRA=origTargetRA; newTargetDec=origTargetDec;
+#if TELESCOPE_COORDINATES==TOPOCENTRIC
+          topocentricToObservedPlace(&newTargetRA,&newTargetDec);
+#endif
+
           if (alignActive()) {
             if (alignStar()) i=GOTO_ERR_NONE; else { i=GOTO_ERR_UNSPECIFIED; alignNumStars=0; alignThisStar=0; }
           } else { 
@@ -282,12 +287,14 @@ void processCommands() {
               // read from port 1, send to port 0:
               if (SerialB.available()) {
                 int inByte = SerialB.read();
+                delayMicroseconds(10);
                 SerialA.write(inByte);
               }
-              
+              delayMicroseconds(10);
               // read from port 0, send to port 1:
               if (SerialA.available()) {
                 int inByte = SerialA.read();
+                delayMicroseconds(10);
                 SerialB.write(inByte);
               }
             }
@@ -497,19 +504,22 @@ void processCommands() {
 //         Returns: sDD*MM'SS.s#
       if (command[1]=='D')  { 
 #ifdef HAL_SLOW_PROCESSOR
-        if (millis()-_coord_t<100)
+        if (millis()-_coord_t>100)
 #else
-        if (millis()-_coord_t<5)
+        if (millis()-_coord_t>50)
 #endif
-        { f=_ra; f1=_dec; } else {
-          getEqu(&f,&f1,false); f/=15.0;
-          _ra=f; _dec=f1; _coord_t=millis(); 
+        {
+          getEqu(&f,&f1,false);
+#if TELESCOPE_COORDINATES==TOPOCENTRIC
+          observedPlaceToTopocentric(&f,&f1);
+#endif
+          _ra=f/15.0; _dec=f1; _coord_t=millis(); 
         }
         if (parameter[0]==0) {
-          if (!doubleToDms(reply,&f1,false,true)) commandError=true; else quietReply=true; 
+          if (!doubleToDms(reply,&_dec,false,true)) commandError=true; else quietReply=true; 
         } else
         if ((parameter[0]=='e') && (parameter[1]==0)) {
-          if (!doubleToDmsd(reply,&f1)) commandError=true; else quietReply=true; 
+          if (!doubleToDmsd(reply,&_dec)) commandError=true; else quietReply=true; 
         } else commandError=true;
       } else 
 //  :Gd#   Get Currently Selected Target Declination
@@ -518,10 +528,10 @@ void processCommands() {
 //         Returns: sDD*MM'SS.s#
       if (command[1]=='d')  { 
         if (parameter[0]==0) {
-          if (!doubleToDms(reply,&newTargetDec,false,true)) commandError=true; else quietReply=true; 
+          if (!doubleToDms(reply,&origTargetDec,false,true)) commandError=true; else quietReply=true; 
         } else
         if ((parameter[0]=='e') && (parameter[1]==0)) {
-          if (!doubleToDmsd(reply,&newTargetDec)) commandError=true; else quietReply=true; 
+          if (!doubleToDmsd(reply,&origTargetDec)) commandError=true; else quietReply=true; 
         } else commandError=true;
       } else 
 //  :GG#   Get UTC offset time
@@ -572,22 +582,25 @@ void processCommands() {
 //  :GR#   Get Telescope RA
 //         Returns: HH:MM.T# or HH:MM:SS# (based on precision setting)
 //  :GRa#  Get Telescope RA
-//         Returns: HH:MM:SS.s#
+//         Returns: HH:MM:SS.ss#
       if (command[1]=='R')  {
 #ifdef HAL_SLOW_PROCESSOR
-        if (millis()-_coord_t<100)
+        if (millis()-_coord_t>100)
 #else
-        if (millis()-_coord_t<5)
+        if (millis()-_coord_t>50)
 #endif
-        { f=_ra; f1=_dec; } else {
-          getEqu(&f,&f1,false); f/=15.0;
-          _ra=f; _dec=f1; _coord_t=millis(); 
+        {
+          getEqu(&f,&f1,false);
+#if TELESCOPE_COORDINATES==TOPOCENTRIC
+          observedPlaceToTopocentric(&f,&f1);
+#endif
+          _ra=f/15.0; _dec=f1; _coord_t=millis(); 
         }
         if (parameter[0]==0) {
-           if (!doubleToHms(reply,&f,highPrecision)) commandError=true; else quietReply=true;  
+           if (!doubleToHms(reply,&_ra,highPrecision)) commandError=true; else quietReply=true;  
         } else
         if ((parameter[0]=='a') && (parameter[1]==0)) {
-          if (!doubleToHmsd(reply,&f)) commandError=true; else quietReply=true;
+          if (!doubleToHmsd(reply,&_ra)) commandError=true; else quietReply=true;
         } else commandError=true;
       } else 
 //  :Gr#   Get current/target object RA
@@ -595,7 +608,7 @@ void processCommands() {
 //  :Gra#  Get Telescope RA
 //         Returns: HH:MM:SS.ss#
       if (command[1]=='r')  {
-        f=newTargetRA; f/=15.0;
+        f=origTargetRA; f/=15.0;
         if (parameter[0]==0) {
            if (!doubleToHms(reply,&f,highPrecision)) commandError=true; else quietReply=true;
         } else
@@ -611,18 +624,8 @@ void processCommands() {
 //         Returns: dd.ddddd# (OnStep returns more decimal places than LX200 standard)
 //         Returns the tracking rate if siderealTracking, 0.0 otherwise
       if (command[1]=='T')  {
-        if (trackingState==TrackingSidereal) {
-#ifdef MOUNT_TYPE_ALTAZM
-          f=getTrackingRate()*1.00273790935*60.0; 
-#else
-          cli();
-          f=(trackingTimerRateAxis1*1.00273790935)*60.0;
-          sei();
-#endif
-        }
-        else f=0.0;
         char temp[10];
-        dtostrf(f,0,5,temp);
+        dtostrf(getTrackingRate60Hz(),0,5,temp);
         strcpy(reply,temp);
         quietReply=true;
       } else 
@@ -636,49 +639,106 @@ void processCommands() {
         i=0;
         if ((trackingState!=TrackingSidereal) || trackingSyncInProgress()) reply[i++]='n'; // [n]ot tracking
         if ((trackingState!=TrackingMoveTo) && !trackingSyncInProgress())  reply[i++]='N'; // [N]o goto
-        const char *parkStatusCh = "pIPF";       reply[i++]=parkStatusCh[parkStatus]; // not [p]arked, parking [I]n-progress, [P]arked, Park [F]ailed
-        if (pecRecorded)                         reply[i++]='R';                      // PEC data has been [R]ecorded
-        if (atHome)                              reply[i++]='H';                      // at [H]ome
-        if (PPSsynced)                           reply[i++]='S';                      // PPS [S]ync
-        if ((guideDirAxis1) || (guideDirAxis2))  reply[i++]='G';                      // [G]uide active
-        if (faultAxis1 || faultAxis2)            reply[i++]='f';                      // axis [f]ault
+        const char *parkStatusCh = "pIPF";       reply[i++]=parkStatusCh[parkStatus];      // not [p]arked, parking [I]n-progress, [P]arked, Park [F]ailed
+        if (pecRecorded)                         reply[i++]='R';                           // PEC data has been [R]ecorded
+        if (atHome)                              reply[i++]='H';                           // at [H]ome
+        if (PPSsynced)                           reply[i++]='S';                           // PPS [S]ync
+        if ((guideDirAxis1) || (guideDirAxis2))  reply[i++]='G';                           // [G]uide active
 #ifndef MOUNT_TYPE_ALTAZM
-        if (rateCompensation==RC_REFR_RA)      { reply[i++]='r'; reply[i++]='s'; }    // [r]efr enabled [s]ingle axis
-        if (rateCompensation==RC_REFR_BOTH)    { reply[i++]='r'; }                    // [r]efr enabled
-        if (rateCompensation==RC_FULL_RA)      { reply[i++]='t'; reply[i++]='s'; }    // on[t]rack enabled [s]ingle axis
-        if (rateCompensation==RC_FULL_BOTH)    { reply[i++]='t'; }                    // on[t]rack enabled
+        if (rateCompensation==RC_REFR_RA)      { reply[i++]='r'; reply[i++]='s'; }         // [r]efr enabled [s]ingle axis
+        if (rateCompensation==RC_REFR_BOTH)    { reply[i++]='r'; }                         // [r]efr enabled
+        if (rateCompensation==RC_FULL_RA)      { reply[i++]='t'; reply[i++]='s'; }         // on[t]rack enabled [s]ingle axis
+        if (rateCompensation==RC_FULL_BOTH)    { reply[i++]='t'; }                         // on[t]rack enabled
 #endif
-        if (waitingHome)                         reply[i++]='w';                      // [w]aiting at home
-        if (pauseHome)                           reply[i++]='u';                      // pa[u]se at home enabled?
-        if (soundEnabled)                        reply[i++]='z';                      // bu[z]zer enabled?
+        if (waitingHome)                         reply[i++]='w';                           // [w]aiting at home 
+        if (pauseHome)                           reply[i++]='u';                           // pa[u]se at home enabled?
+        if (soundEnabled)                        reply[i++]='z';                           // bu[z]zer enabled?
 #ifdef MOUNT_TYPE_GEM
-        if (autoMeridianFlip)                    reply[i++]='a';                      // [a]uto meridian flip
+        if (autoMeridianFlip)                    reply[i++]='a';                           // [a]uto meridian flip
 #endif
 #ifndef MOUNT_TYPE_ALTAZM        
-        const char *pch = PECStatusStringAlt; reply[i++]=pch[pecStatus];              // PEC Status is one of "/,~;^" (/)gnore, get ready to (,)lay, (~)laying, get ready to (;)ecord, (^)ecording
-        // if (wormSensedAgain) { reply[i++]='.'; wormSensedAgain=false; }            // PEC optional (.) to indicate an index detect since last call
+        const char *pch = PECStatusStringAlt; reply[i++]=pch[pecStatus];                   // PEC Status is one of "/,~;^" (/)gnore, get ready to (,)lay, (~)laying, get ready to (;)ecord, (^)ecording
+        // if (wormSensedAgain) { reply[i++]='.'; wormSensedAgain=false; }                 // PEC optional (.) to indicate an index detect since last call
 #endif
         // provide mount type
         #if defined(MOUNT_TYPE_GEM)
         reply[i++]='E';
         #elif defined(MOUNT_TYPE_FORK)
         reply[i++]='K';
-        #elif defined(MOUNT_TYPE_FORK_ALT)
-        reply[i++]='k';
         #elif defined(MOUNT_TYPE_ALTAZM)
         reply[i++]='A';
         #endif
 
         // provide pier side info.
-        if (getInstrPierSide()==PierSideNone) reply[i++]='o'; else                    // pier side n[o]ne
-        if (getInstrPierSide()==PierSideEast) reply[i++]='T'; else                    // pier side eas[T]
-        if (getInstrPierSide()==PierSideWest) reply[i++]='W';                         // pier side [W]est
+        if (getInstrPierSide()==PierSideNone) reply[i++]='o'; else                         // pier side n[o]ne
+        if (getInstrPierSide()==PierSideEast) reply[i++]='T'; else                         // pier side eas[T]
+        if (getInstrPierSide()==PierSideWest) reply[i++]='W';                              // pier side [W]est
+
+        // provide pulse-guide rate
+        reply[i++]='0'+getPulseGuideRate();
+
+        // provide guide rate
+        reply[i++]='0'+getGuideRate();
 
         // provide last error
         reply[i++]='0'+lastError;
         reply[i++]=0;
         quietReply=true;
 
+      } else
+//  :Gu#   Get bit packed telescope status
+//         Returns: SS#
+      if (command[1]=='u')  {
+        memset(reply,(char)0b10000000,9);
+        if ((trackingState!=TrackingSidereal) || trackingSyncInProgress()) reply[0]|=0b10000001; // Not tracking
+        if ((trackingState!=TrackingMoveTo) && !trackingSyncInProgress())  reply[0]|=0b10000010; // No goto
+        if (PPSsynced)                               reply[0]|=0b10000100;                       // PPS sync
+        if ((guideDirAxis1) || (guideDirAxis2))      reply[0]|=0b10001000;                       // Guide active
+#ifndef MOUNT_TYPE_ALTAZM
+        if (rateCompensation==RC_REFR_RA)            reply[0]|=0b11010000;                       // Refr enabled Single axis
+        if (rateCompensation==RC_REFR_BOTH)          reply[0]|=0b10010000;                       // Refr enabled
+        if (rateCompensation==RC_FULL_RA)            reply[0]|=0b11100000;                       // OnTrack enabled Single axis
+        if (rateCompensation==RC_FULL_BOTH)          reply[0]|=0b10100000;                       // OnTrack enabled
+#endif
+        if (rateCompensation==RC_NONE) {
+          double tr=getTrackingRate60Hz();
+          if (abs(tr-57.900)<0.001)                  reply[1]|=0b10000001; else                  // Lunar rate selected
+          if (abs(tr-60.000)<0.001)                  reply[1]|=0b10000010; else                  // Solar rate selected
+          if (abs(tr-60.136)<0.001)                  reply[1]|=0b10000011;                       // King rate selected
+        }
+        
+        if (atHome)                                  reply[2]|=0b10000001;                       // At home
+        if (waitingHome)                             reply[2]|=0b10000010;                       // Waiting at home
+        if (pauseHome)                               reply[2]|=0b10000100;                       // Pause at home enabled?
+        if (soundEnabled)                            reply[2]|=0b10001000;                       // Buzzer enabled?
+#ifdef MOUNT_TYPE_GEM
+        if (autoMeridianFlip)                        reply[2]|=0b10010000;                       // Auto meridian flip
+#endif
+        if (pecRecorded)                             reply[2]|=0b10100000;                       // PEC data has been recorded
+
+        // provide mount type
+        #if defined(MOUNT_TYPE_GEM)
+                                                     reply[3]|=0b10000001;                       // GEM
+        #elif defined(MOUNT_TYPE_FORK)
+                                                     reply[3]|=0b10000010;                       // FORK
+        #elif defined(MOUNT_TYPE_ALTAZM)
+                                                     reply[3]|=0b10001000;                       // ALTAZM
+        #endif
+
+        // provide pier side info.
+        if (getInstrPierSide()==PierSideNone)        reply[3]|=0b10010000; else                  // Pier side none
+        if (getInstrPierSide()==PierSideEast)        reply[3]|=0b10100000; else                  // Pier side east
+        if (getInstrPierSide()==PierSideWest)        reply[3]|=0b11000000;                       // Pier side west
+
+#ifndef MOUNT_TYPE_ALTAZM
+        reply[4]=pecStatus|0b10000000;                                                           // PEC status: 0 ignore, 1 get ready to play, 2 playing, 3 get ready to record, 4 recording
+#endif
+        reply[5]=parkStatus|0b10000000;                                                          // Park status: 0 not parked, 1 parking in-progress, 2 parked, 3 park failed
+        reply[6]=getPulseGuideRate()|0b10000000;                                                 // Pulse-guide rate
+        reply[7]=getGuideRate()|0b10000000;                                                      // Guide rate
+        reply[8]=lastError|0b10000000;                                                           // Last error
+        reply[9]=0;
+        quietReply=true;
       } else
 //  :GVD# Get Telescope Firmware Date
 //         Returns: mmm dd yyyy#
@@ -701,6 +761,27 @@ void processCommands() {
         
         quietReply=true; 
       } else 
+//  :GW# Get Scope Alignment Status
+//         returns: <mount><tracking><alignment>#
+//            where mount: A-AltAzm, P-Fork, G-GEM
+//                  tracking: T-tracking, N-not tracking
+//                  alignment: 0-needs alignment, 1-one star aligned, 2-two star aligned, >= 3-three star aligned
+       if ((command[1]=='W') && (parameter[0]==0)) {
+        // mount type
+        #if defined(MOUNT_TYPE_GEM)
+        reply[0]='G';
+        #elif defined(MOUNT_TYPE_FORK)
+        reply[0]='P';
+        #elif defined(MOUNT_TYPE_ALTAZM)
+        reply[0]='A';
+        #endif
+        // tracking
+        if ((trackingState!=TrackingSidereal) || trackingSyncInProgress()) reply[1]='N'; else reply[1]='T';
+        // align status
+        i=alignThisStar-1; if (i<0) i=0; if (i>3) i=3; reply[2]='0'+i;
+        reply[3]=0;
+        quietReply=true;
+       } else
 //  :GXnn#   Get OnStep value
 //         Returns: value
       if (command[1]=='X')  {
@@ -714,7 +795,7 @@ void processCommands() {
               case '3': sprintf(reply,"%ld",(long)(Align.azmCor*3600.0)); quietReply=true; break; // azmCor
               case '4': sprintf(reply,"%ld",(long)(Align.doCor*3600.0)); quietReply=true; break;  // doCor
               case '5': sprintf(reply,"%ld",(long)(Align.pdCor*3600.0)); quietReply=true; break;  // pdCor
-#if defined(MOUNT_TYPE_FORK) || defined(MOUNT_TYPE_FORK_ALT) || defined(MOUNT_TYPE_ALTAZM)
+#if defined(MOUNT_TYPE_FORK) || defined(MOUNT_TYPE_ALTAZM)
               case '6': sprintf(reply,"%ld",(long)(Align.dfCor*3600.0)); quietReply=true; break;  // ffCor
               case '7': sprintf(reply,"%ld",(long)(0)); quietReply=true; break;                   // dfCor
 #else
@@ -753,8 +834,8 @@ void processCommands() {
             switch (parameter[1]) {
               case '0': dtostrf(guideRates[currentPulseGuideRate]/15.0,2,2,reply); quietReply=true; break;  // pulse-guide rate
               case '1': sprintf(reply,"%i",pecAnalogValue); quietReply=true; break;                         // pec analog value
-              case '2': sprintf(reply,"%ld",(long)(maxRate/16L)); quietReply=true; break;                   // MaxRate
-              case '3': sprintf(reply,"%ld",(long)(MaxRate)); quietReply=true; break;                       // MaxRate (default)
+              case '2': dtostrf(maxRate/16.0,3,3,reply); quietReply=true; break;                            // MaxRate (current)
+              case '3': dtostrf((double)MaxRateDef,3,3,reply); quietReply=true; break;                      // MaxRateDef (default)
               case '4': if (meridianFlip==MeridianFlipNever) { sprintf(reply,"%d N",getInstrPierSide()); } else { sprintf(reply,"%d",getInstrPierSide()); } quietReply=true; break; // pierSide (N if never)
               case '5': sprintf(reply,"%i",(int)autoMeridianFlip); quietReply=true; break;                  // autoMeridianFlip
               case '6':                                                                                     // preferred pier side
@@ -762,7 +843,7 @@ void processCommands() {
                 if (preferredPierSide==PPS_WEST) strcpy(reply,"W"); else strcpy(reply,"B");
                 quietReply=true; break;
               case '7': dtostrf(slewSpeed,3,1,reply); quietReply=true; break;                               // slew speed
-              case '8': 
+              case '8':
 #ifdef ROTATOR_ON
 #ifdef MOUNT_TYPE_ALTAZM
                 strcpy(reply,"D");
@@ -773,11 +854,12 @@ void processCommands() {
                 strcpy(reply,"N");
 #endif
                 quietReply=true; break; // rotator availablity 2=rotate/derotate, 1=rotate, 0=off
-              case 'A': dtostrf(ambient.getTemperature(),3,1,reply); quietReply=true; break;       // temperature in deg. C
-              case 'B': dtostrf(ambient.getPressure(),3,1,reply); quietReply=true; break;          // pressure in mb
-              case 'C': dtostrf(ambient.getHumidity(),3,1,reply); quietReply=true; break;          // relative humidity in %
-              case 'D': dtostrf(ambient.getAltitude(),3,1,reply); quietReply=true; break;          // altitude in meters
-              case 'E': dtostrf(ambient.getDewPoint(),3,1,reply); quietReply=true; break;          // dew point in deg. C
+              case '9': dtostrf((double)maxRateLowerLimit()/16.0,3,3,reply); quietReply=true; break; // MaxRate (fastest/lowest)
+              case 'A': dtostrf(ambient.getTemperature(),3,1,reply); quietReply=true; break;         // temperature in deg. C
+              case 'B': dtostrf(ambient.getPressure(),3,1,reply); quietReply=true; break;            // pressure in mb
+              case 'C': dtostrf(ambient.getHumidity(),3,1,reply); quietReply=true; break;            // relative humidity in %
+              case 'D': dtostrf(ambient.getAltitude(),3,1,reply); quietReply=true; break;            // altitude in meters
+              case 'E': dtostrf(ambient.getDewPoint(),3,1,reply); quietReply=true; break;            // dew point in deg. C
               case 'F': { float t=HAL_MCU_Temperature(); if (t>-999) { dtostrf(t,1,0,reply); quietReply=true; } else commandError=true; } break; // internal MCU temperature in deg. C
               default:  commandError=true;
             }
@@ -814,7 +896,7 @@ void processCommands() {
 #endif
           if (parameter[0]=='E') { // En: Get settings
             switch (parameter[1]) {
-              case '1': sprintf(reply,"%ld",(long)MaxRate); quietReply=true; break;
+              case '1': dtostrf((double)MaxRateDef,3,3,reply); quietReply=true; break;
               case '2': dtostrf(DegreesForAcceleration,2,1,reply); quietReply=true; break;
               case '3': sprintf(reply,"%ld",(long)round(BacklashTakeupRate)); quietReply=true; break;
               case '4': sprintf(reply,"%ld",(long)round(StepsPerDegreeAxis1)); quietReply=true; break;
@@ -829,6 +911,15 @@ void processCommands() {
               case 'B': sprintf(reply,"%ld",(long)round(UnderPoleLimit)); quietReply=true; break;
               case 'C': sprintf(reply,"%ld",(long)round(MinDec)); quietReply=true; break;
               case 'D': sprintf(reply,"%ld",(long)round(MaxDec)); quietReply=true; break;
+              case 'E': 
+                // coordinate mode for getting and setting RA/Dec
+                // 0 = OBSERVED_PLACE
+                // 1 = TOPOCENTRIC (does refraction)
+                // 2 = ASTROMETRIC_J2000
+                reply[0]='0'+(TELESCOPE_COORDINATES-1);
+                quietReply=true;
+                supress_frame=true;
+              break;
               default:  commandError=true;
             }
           } else
@@ -838,8 +929,8 @@ void processCommands() {
               case '0': cli(); temp=(long)(posAxis1-((long)targetAxis1.part.m)); sei(); sprintf(reply,"%ld",temp); quietReply=true; break; // Debug0, true vs. target RA position
               case '1': cli(); temp=(long)(posAxis2-((long)targetAxis2.part.m)); sei(); sprintf(reply,"%ld",temp); quietReply=true; break; // Debug1, true vs. target Dec position
               case '2': cli(); temp=(long)trackingState; sei(); sprintf(reply,"%ld",temp); quietReply=true; break;                         // Debug2, trackingState
-              case '3': sprintf(reply,"%ld",(long)(_deltaAxis1*1000.0*1.00273790935)); quietReply=true; break;                             // Debug3, RA refraction tracking rate
-              case '4': sprintf(reply,"%ld",(long)(_deltaAxis2*1000.0*1.00273790935)); quietReply=true; break;                             // Debug4, Dec refraction tracking rate
+              case '3': dtostrf(getFrequencyHzAxis1(),3,6,reply); quietReply=true; break;                                                  // Axis1 final tracking rate Hz
+              case '4': dtostrf(getFrequencyHzAxis2(),3,6,reply); quietReply=true; break;                                                  // Axis2 final tracking rate Hz
               case '6': cli(); temp=(long)(targetAxis1.part.m); sei(); sprintf(reply,"%ld",temp); quietReply=true; break;                  // Debug6, HA target position
               case '7': cli(); temp=(long)(targetAxis2.part.m); sei(); sprintf(reply,"%ld",temp); quietReply=true; break;                  // Debug7, Dec target position
               case '8': cli(); temp=(long)(posAxis1); sei(); sprintf(reply,"%ld",temp); quietReply=true; break;                            // Debug8, HA motor position
@@ -950,7 +1041,7 @@ void processCommands() {
 //  :hR#   Restore parked telescope to operation
 //          Return: 0 on failure
 //                  1 on success
-      if (command[1]=='R')  { if (!unPark()) commandError=true; }
+      if (command[1]=='R')  { if (!unPark(true)) commandError=true; }
       else commandError=true;
 
       } else
@@ -977,7 +1068,7 @@ void processCommands() {
 //          Returns: <string>#
 //          Returns a string containing the current target object’s name and object type.
       if ((command[1]=='I') && (parameter[0]==0)) {
-        Lib.readVars(reply,&i,&newTargetRA,&newTargetDec);
+        Lib.readVars(reply,&i,&origTargetRA,&origTargetDec);
 
         char const * objType=objectStr[i];
         strcat(reply,",");
@@ -988,7 +1079,12 @@ void processCommands() {
 // :LIG#   Get Object Information and goto
 //         Returns: Nothing
       if ((command[1]=='I') && (parameter[0]=='G') && (parameter[1]==0)) {
-        Lib.readVars(reply,&i,&newTargetRA,&newTargetDec);
+        Lib.readVars(reply,&i,&origTargetRA,&origTargetDec);
+
+        newTargetRA=origTargetRA; newTargetDec=origTargetDec;
+#if TELESCOPE_COORDINATES==TOPOCENTRIC
+        topocentricToObservedPlace(&newTargetRA,&newTargetDec);
+#endif
 
         goToEqu(newTargetRA,newTargetDec);
         quietReply=true;
@@ -998,7 +1094,7 @@ void processCommands() {
 //          Returns: <string>#
 //          Returns a string containing the current target object’s name, type, RA, and Dec.
       if ((command[1]=='R') && (parameter[0]==0)) {
-        Lib.readVars(reply,&i,&newTargetRA,&newTargetDec);
+        Lib.readVars(reply,&i,&origTargetRA,&origTargetDec);
 
         char const * objType=objectStr[i];
         char ws[20];
@@ -1006,8 +1102,8 @@ void processCommands() {
         strcat(reply,",");
         strcat(reply,objType);
         if (strcmp(reply,",UNK")!=0) {
-          f=newTargetRA; f/=15.0; doubleToHms(ws,&f,highPrecision); strcat(reply,","); strcat(reply,ws);
-          doubleToDms(ws,&newTargetDec,false,true); strcat(reply,","); strcat(reply,ws);
+          f=origTargetRA; f/=15.0; doubleToHms(ws,&f,highPrecision); strcat(reply,","); strcat(reply,ws);
+          doubleToDms(ws,&origTargetDec,false,true); strcat(reply,","); strcat(reply,ws);
         }
         
         Lib.nextRec();
@@ -1049,7 +1145,7 @@ void processCommands() {
           for (l=0; l<=15; l++) { if (strcmp(objType,objectStr[l])==0) i=l; }
         }
         
-        if (Lib.firstFreeRec()) Lib.writeVars(name,i,newTargetRA,newTargetDec); else commandError=true;
+        if (Lib.firstFreeRec()) Lib.writeVars(name,i,origTargetRA,origTargetDec); else commandError=true;
       } else 
 
 // :LN#    Find next deep sky target object subject to the current constraints.
@@ -1084,6 +1180,13 @@ void processCommands() {
 //          Returns: Nothing
       if ((command[1]=='!') && (parameter[0]==0)) { 
           Lib.clearAll();
+          quietReply=true;
+      } else 
+
+// :L?#    Get library free records (all catalogs)
+//          Returns: n#
+      if ((command[1]=='?') && (parameter[0]==0)) { 
+          sprintf(reply,"%d",Lib.recFreeAll());
           quietReply=true;
       } else 
 
@@ -1175,6 +1278,10 @@ void processCommands() {
 //         8=already in motion
 //         9=unspecified error
       if (command[1]=='S')  {
+        newTargetRA=origTargetRA; newTargetDec=origTargetDec;
+#if TELESCOPE_COORDINATES==TOPOCENTRIC
+        topocentricToObservedPlace(&newTargetRA,&newTargetDec);
+#endif
         i=goToEqu(newTargetRA,newTargetDec);
         reply[0]=i+'0'; reply[1]=0;
         quietReply=true;
@@ -1284,15 +1391,17 @@ void processCommands() {
 
 //  :RG#   Set Slew rate to Guiding Rate (slowest) 1X
 //  :RC#   Set Slew rate to Centering rate (2nd slowest) 8X
-//  :RM#   Set Slew rate to Find Rate (2nd Fastest) 24X
-//  :RS#   Set Slew rate to max (fastest) ?X (1/2 of MaxRate)
+//  :RM#   Set Slew rate to Find Rate (2nd Fastest) 20X
+//  :RF#   Set Slew rate to Fast Rate (Fastest) 48X
+//  :RS#   Set Slew rate to max (fastest) ?X (1/2 of maxRate)
 //  :Rn#   Set Slew rate to n, where n=0..9
 //         Returns: Nothing
       if ((command[1]=='G') || (command[1]=='C') || (command[1]=='M') || (command[1]=='S') || ((command[1]>='0') && (command[1]<='9'))) {
         if (command[1]=='G') i=2; else // 1x
         if (command[1]=='C') i=5; else // 8x
-        if (command[1]=='M') i=6; else // 24x
-        if (command[1]=='S') i=8; else i=command[1]-'0';
+        if (command[1]=='M') i=6; else // 20x
+        if (command[1]=='F') i=7; else // 48x
+        if (command[1]=='S') i=8; else i=command[1]-'0'; // typically 240x to 480x can be as low as 60x
         setGuideRate(i);
         quietReply=true; 
       } else commandError=true;
@@ -1329,10 +1438,9 @@ void processCommands() {
         if (!doubleToDms(reply,&f1,true,true)) commandError=true; else quietReply=true;
         highPrecision=i;
       } else
-//  :r~#   Set continuous move mode
-//         Return: 0 on failure
-//                 1 on success
-      if (command[1]=='~') { rot.moveContinuous(true); } else
+//  :rc#   Set continuous move mode (for next move command)
+//         Returns: Nothing
+      if (command[1]=='c') { rot.moveContinuous(true); quietReply=true; } else
 //  :r>#   Move clockwise as set by :rn# command, default = 1 deg (or 0.1 deg/s in continuous mode)
 //         Returns: Nothing
       if (command[1]=='>') { rot.startMoveCW(); quietReply=true; } else
@@ -1341,7 +1449,7 @@ void processCommands() {
       if (command[1]=='<') { rot.startMoveCCW(); quietReply=true; } else
 //  :rQ#   Stops movement (except derotator)
 //         Returns: Nothing
-      if (command[1]=='Q') { rot.stopMove(); quietReply=true; } else
+      if (command[1]=='Q') { rot.stopMove(); rot.moveContinuous(false); quietReply=true; } else
 //  :rn#   Move increment, 1=1 degrees, 2=2 degrees, 3=5 degrees, 4=10 degrees
 //         Move rate     , 1=.01 deg/s, 2=0.1 deg/s, 3=1.0 deg/s, 4=5.0 deg/s
 //         Returns: Nothing
@@ -1412,9 +1520,9 @@ void processCommands() {
 //          Return: 0 on failure
 //                  1 on success
       if (command[1]=='d')  { 
-        if (!dmsToDouble(&newTargetDec,parameter,true)) {
+        if (!dmsToDouble(&origTargetDec,parameter,true)) {
           i=highPrecision; highPrecision=!highPrecision;
-          if (!dmsToDouble(&newTargetDec,parameter,true)) commandError=true; 
+          if (!dmsToDouble(&origTargetDec,parameter,true)) commandError=true; 
           highPrecision=i;
         }
       } else 
@@ -1513,11 +1621,11 @@ void processCommands() {
 //          Return: 0 on failure
 //                  1 on success
       if (command[1]=='r')  {
-        if (!hmsToDouble(&newTargetRA,parameter)) {
+        if (!hmsToDouble(&origTargetRA,parameter)) {
           i=highPrecision; highPrecision=!highPrecision;
-          if (!hmsToDouble(&newTargetRA,parameter)) commandError=true; else newTargetRA*=15.0;
+          if (!hmsToDouble(&origTargetRA,parameter)) commandError=true; else origTargetRA*=15.0;
           highPrecision=i;
-        } else newTargetRA*=15.0;
+        } else origTargetRA*=15.0;
       } else 
 //  :SSHH:MM:SS#
 //          Sets the local (apparent) sideral time to HH:MM:SS
@@ -1533,10 +1641,10 @@ void processCommands() {
         if (!dmsToDouble(&latitude,parameter,true)) { commandError=true; } else {
           nv.writeFloat(100+(currentSite)*25+0,latitude);
 #ifdef MOUNT_TYPE_ALTAZM
-          celestialPoleAxis2=AltAzmDecStartPos;
-          if (latitude<0) celestialPoleAxis1=180.0; else celestialPoleAxis1=0.0;
+          homePositionAxis2=AltAzmDecStartPos;
+          if (latitude<0) homePositionAxis1=180.0; else homePositionAxis1=0.0;
 #else
-          if (latitude<0) celestialPoleAxis2=-90.0; else celestialPoleAxis2=90.0;
+          if (latitude<0) homePositionAxis2=-90.0; else homePositionAxis2=90.0;
 #endif
           cosLat=cos(latitude/Rad);
           sinLat=sin(latitude/Rad);
@@ -1574,7 +1682,7 @@ void processCommands() {
             case '3': Align.azmCor=(double)strtol(&parameter[3],NULL,10)/3600.0; break;    // azmCor
             case '4': Align.doCor=(double)strtol(&parameter[3],NULL,10)/3600.0; break;     // doCor
             case '5': Align.pdCor=(double)strtol(&parameter[3],NULL,10)/3600.0; break;     // pdCor
-#if defined(MOUNT_TYPE_FORK) || defined(MOUNT_TYPE_FORK_ALT)
+#ifdef MOUNT_TYPE_FORK
             case '6': Align.dfCor=(double)strtol(&parameter[3],NULL,10)/3600.0; break;     // ffCor
             case '7': break;                                                               // dfCor
 #else
@@ -1613,10 +1721,11 @@ void processCommands() {
           switch (parameter[1]) {
             case '2': // set new acceleration rate (returns 1 success or 0 failure)
               if (!isSlewing()) {
-                maxRate=strtol(&parameter[3],NULL,10)*16L;
-                if (maxRate<(MaxRate/2L)*16L) maxRate=(MaxRate/2L)*16L;
-                if (maxRate>(MaxRate*2L)*16L) maxRate=(MaxRate*2L)*16L;
-                nv.writeInt(EE_maxRate,(int)(maxRate/16L));
+                maxRate=strtod(&parameter[3],&conv_end)*16.0;
+                if (maxRate<(double)MaxRateDef*8.0) maxRate=(double)MaxRateDef*8.0;
+                if (maxRate>(double)MaxRateDef*32.0) maxRate=(double)MaxRateDef*32.0;
+                if (maxRate<maxRateLowerLimit()) maxRate=maxRateLowerLimit();
+                nv.writeLong(EE_maxRateL,maxRate);
                 setAccelerationRates(maxRate);
               } else commandError=true;
             break;
@@ -1624,15 +1733,17 @@ void processCommands() {
               quietReply=true;
               if (!isSlewing()) {
                 switch (parameter[3]) {
-                  case '5': maxRate=MaxRate*32L; break; // 50%
-                  case '4': maxRate=MaxRate*24L; break; // 75%
-                  case '3': maxRate=MaxRate*16L; break; // 100%
-                  case '2': maxRate=MaxRate*12L; break; // 150%
-                  case '1': maxRate=MaxRate*8L;  break; // 200%
-                  default:  maxRate=MaxRate*16L;
-                  nv.writeInt(EE_maxRate,(int)(maxRate/16L));
-                  setAccelerationRates(maxRate);
+                  case '5': maxRate=(double)MaxRateDef*32.0; break; // 50%
+                  case '4': maxRate=(double)MaxRateDef*24.0; break; // 75%
+                  case '3': maxRate=(double)MaxRateDef*16.0; break; // 100%
+                  case '2': maxRate=(double)MaxRateDef*12.0; break; // 150%
+                  case '1': maxRate=(double)MaxRateDef*8.0;  break; // 200%
+                  default:  maxRate=(double)MaxRateDef*16.0;
                 }
+                if (maxRate<maxRateLowerLimit()) maxRate=maxRateLowerLimit();
+
+                nv.writeLong(EE_maxRateL,maxRate);
+                setAccelerationRates(maxRate);
               }
             break;
 #ifdef MOUNT_TYPE_GEM
@@ -1705,84 +1816,84 @@ void processCommands() {
           long v=(double)strtol(&parameter[3],NULL,10);
           if ((v>=0) && (v<=255)) {
 #ifdef Aux0
-            if (parameter[1]=='0') { valueAux0=v; byte p=Aux0; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='0') { valueAux0=v; static bool init=false; if (!init) { pinMode(Aux0,OUTPUT); init=true; } if (v==0) digitalWrite(Aux0,LOW); else digitalWrite(Aux0,HIGH); } else
 #endif
 #ifndef MODE_SWITCH_BEFORE_SLEW_SPI
 #ifdef Aux1
-            if (parameter[1]=='1') { valueAux1=v; byte p=Aux1; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='1') { valueAux1=v; static bool init=false; if (!init) { pinMode(Aux1,OUTPUT); init=true; } if (v==0) digitalWrite(Aux1,LOW); else digitalWrite(Aux1,HIGH); } else
 #endif
 #ifdef Aux2
-            if (parameter[1]=='2') { valueAux2=v; byte p=Aux2; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='2') { valueAux2=v; static bool init=false; if (!init) { pinMode(Aux2,OUTPUT); init=true; } if (v==0) digitalWrite(Aux2,LOW); else digitalWrite(Aux2,HIGH); } else
 #endif
 #endif
 #ifdef Aux3
-            if (parameter[1]=='3') { valueAux3=v; byte p=Aux3; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; }
+            if (parameter[1]=='3') { valueAux3=v; static bool init=false; if (!init) { pinMode(Aux3,OUTPUT); init=true; }
   #ifdef Aux3_Analog
-              analogWrite(p,v); } else
+              analogWrite(Aux3,v); } else
   #else
-              if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+              if (v==0) digitalWrite(Aux3,LOW); else digitalWrite(Aux3,HIGH); } else
   #endif
 #endif
 #ifdef Aux4
-            if (parameter[1]=='4') { valueAux4=v; byte p=Aux4; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; }
+            if (parameter[1]=='4') { valueAux4=v; static bool init=false; if (!init) { pinMode(Aux4,OUTPUT); init=true; }
   #ifdef Aux4_Analog
-              analogWrite(p,v); } else
+              analogWrite(Aux4,v); } else
   #else
-              if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+              if (v==0) digitalWrite(Aux4,LOW); else digitalWrite(Aux4,HIGH); } else
   #endif
 #endif
 #ifdef Aux5
-            if (parameter[1]=='5') { valueAux5=v; byte p=Aux5; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; }
+            if (parameter[1]=='5') { valueAux5=v; static bool init=false; if (!init) { pinMode(Aux5,OUTPUT); init=true; }
   #ifdef Aux5_Analog
-              analogWrite(p,v); } else
+              analogWrite(Aux5,v); } else
   #else
-              if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+              if (v==0) digitalWrite(Aux5,LOW); else digitalWrite(Aux5,HIGH); } else
   #endif
 #endif
 #ifdef Aux6
-            if (parameter[1]=='6') { valueAux6=v; byte p=Aux6; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; }
+            if (parameter[1]=='6') { valueAux6=v; static bool init=false; if (!init) { pinMode(Aux6,OUTPUT); init=true; }
   #ifdef Aux6_Analog
-              analogWrite(p,v); } else
+              analogWrite(Aux6,v); } else
   #else
-              if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+              if (v==0) digitalWrite(Aux6,LOW); else digitalWrite(Aux6,HIGH); } else
   #endif
 #endif
 #ifdef Aux7
-            if (parameter[1]=='7') { valueAux7=v; byte p=Aux7; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; }
+            if (parameter[1]=='7') { valueAux7=v; static bool init=false; if (!init) { pinMode(Aux7,OUTPUT); init=true; }
   #ifdef Aux7_Analog
-              analogWrite(p,v); } else
+              analogWrite(Aux7,v); } else
   #else
-              if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+              if (v==0) digitalWrite(Aux7,LOW); else digitalWrite(Aux7,HIGH); } else
   #endif
 #endif
 #ifdef Aux8
-            if (parameter[1]=='8') { valueAux8=v; byte p=Aux8; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; }
+            if (parameter[1]=='8') { valueAux8=v; static bool init=false; if (!init) { pinMode(Aux8,OUTPUT); init=true; }
   #ifdef Aux8_Analog
-              analogWrite(p,v); } else
+              analogWrite(Aux8,v); } else
   #else
-              if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+              if (v==0) digitalWrite(Aux8,LOW); else digitalWrite(Aux8,HIGH); } else
   #endif
 #endif
 #ifdef Aux9
-            if (parameter[1]=='9') { valueAux9=v; byte p=Aux9; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='9') { valueAux9=v; static bool init=false; if (!init) { pinMode(Aux9,OUTPUT); init=true; } if (v==0) digitalWrite(Aux9,LOW); else digitalWrite(Aux9,HIGH); } else
 #endif
 #ifdef Aux10
-            if (parameter[1]=='A') { valueAux10=v; byte p=Aux10; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='A') { valueAux10=v; static bool init=false; if (!init) { pinMode(Aux10,OUTPUT); init=true; } if (v==0) digitalWrite(Aux10,LOW); else digitalWrite(Aux10,HIGH); } else
 #endif
 #ifdef Aux11
-            if (parameter[1]=='B') { valueAux11=v; byte p=Aux11; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='B') { valueAux11=v; static bool init=false; if (!init) { pinMode(Aux11,OUTPUT); init=true; } if (v==0) digitalWrite(Aux11,LOW); else digitalWrite(Aux11,HIGH); } else
 #endif
 #ifdef Aux12
-            if (parameter[1]=='C') { valueAux12=v; byte p=Aux12; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='C') { valueAux12=v; static bool init=false; if (!init) { pinMode(Aux12,OUTPUT); init=true; } if (v==0) digitalWrite(Aux12,LOW); else digitalWrite(Aux12,HIGH); } else
 #endif
 #ifdef Aux13
-            if (parameter[1]=='D') { valueAux13=v; byte p=Aux13; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='D') { valueAux13=v; static bool init=false; if (!init) { pinMode(Aux13,OUTPUT); init=true; } if (v==0) digitalWrite(Aux13,LOW); else digitalWrite(Aux13,HIGH); } else
 #endif
 #ifdef Aux14
-            if (parameter[1]=='E') { valueAux14=v; byte p=Aux14; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='E') { valueAux14=v; static bool init=false; if (!init) { pinMode(Aux14,OUTPUT); init=true; } if (v==0) digitalWrite(Aux14,LOW); else digitalWrite(Aux14,HIGH); } else
 #endif
 #ifdef Aux15
-            if (parameter[1]=='F') { valueAux15=v; byte p=Aux15; static bool init=false; if (!init) { pinMode(p,OUTPUT); init=true; } if (v==0) digitalWrite(p,LOW); else digitalWrite(p,HIGH); } else
+            if (parameter[1]=='F') { valueAux15=v; static bool init=false; if (!init) { pinMode(Aux15,OUTPUT); init=true; } if (v==0) digitalWrite(Aux15,LOW); else digitalWrite(Aux15,HIGH); } else
 #endif
             commandError=true;
           } else commandError=true;
@@ -1831,7 +1942,7 @@ void processCommands() {
         if (command[1]=='Q') { setTrackingRate(default_tracking_rate); quietReply=true; } else                              // sidereal tracking rate
         if (command[1]=='R') { siderealInterval=15956313L; quietReply=true; } else                                          // reset master sidereal clock interval
         if (command[1]=='K') { setTrackingRate(0.99953004401); rateCompensation=RC_NONE; quietReply=true; } else            // king tracking rate 60.136Hz
-        if ((command[1]=='e') && !isSlewing() && !isHoming() && !isParked() ) { trackingState=TrackingSidereal; enableStepperDrivers(); } else
+        if ((command[1]=='e') && !isSlewing() && !isHoming() && !isParked() ) { lastError=ERR_NONE; trackingState=TrackingSidereal; enableStepperDrivers(); } else
         if ((command[1]=='d') && !isSlewing() && !isHoming() ) trackingState=TrackingNone; else
           commandError=true;
 
@@ -2001,9 +2112,9 @@ void processCommands() {
           currentSite=command[1]-'0'; nv.update(EE_currentSite,currentSite); quietReply=true;
           latitude=nv.readFloat(EE_sites+(currentSite*25+0));
 #ifdef MOUNT_TYPE_ALTAZM
-          celestialPoleAxis2=AltAzmDecStartPos;
+          homePositionAxis2=AltAzmDecStartPos;
 #else
-          if (latitude<0.0) celestialPoleAxis2=-90.0; else celestialPoleAxis2=90.0;
+          if (latitude<0.0) homePositionAxis2=-90.0; else homePositionAxis2=90.0;
 #endif
           cosLat=cos(latitude/Rad);
           sinLat=sin(latitude/Rad);
@@ -2100,7 +2211,7 @@ void checksum(char s[]) {
 }
 
 void forceRefreshGetEqu() {
-  _coord_t=millis()-100;
+  _coord_t=millis()-100UL;
 }
 
 // local command processing

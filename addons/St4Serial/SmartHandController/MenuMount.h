@@ -1,5 +1,5 @@
+// Mount menu
 
-#ifdef SHC_ON
 void SmartHandController::menuMount()
 {
   current_selection_L2 = 1;
@@ -13,7 +13,6 @@ void SmartHandController::menuMount()
     case 2: menuBacklash(); break;
     case 3: menuLimits(); break;
     case 4: menuPier(); break;
-    default: break;
     }
   }
 }
@@ -25,11 +24,11 @@ void SmartHandController::menuGotoSpeed()
 
   char mr[20]=""; boolean ok = GetLX200Trim(":GX93#",mr) == LX200VALUEGET;
   if (ok) {
-    long rateDefault=atol(mr);
+    double rateDefault=atof(mr);
     ok = GetLX200Trim(":GX92#",mr) == LX200VALUEGET;
     if (ok) {
-      long rateCurrent=atol(mr);
-      double r=(double)rateDefault/(double)rateCurrent;
+      double rateCurrent=atof(mr);
+      double r=rateDefault/rateCurrent;
       if (r>1.75) current_selection_L3 = 1; else
       if (r>1.25) current_selection_L3 = 2; else
       if (r>0.875) current_selection_L3 = 3; else
@@ -47,7 +46,6 @@ void SmartHandController::menuGotoSpeed()
     case 3: SetLX200(":SX93,3#"); DisplayMessage("Goto Speed", "1X", 1500); break;
     case 4: SetLX200(":SX93,4#"); DisplayMessage("Goto Speed", "0.75X", 1500); break;
     case 5: SetLX200(":SX93,5#"); DisplayMessage("Goto Speed", "0.5X", 1500); break;
-    default: break;
     }
   }
 }
@@ -68,6 +66,19 @@ void SmartHandController::menuBacklash()
     default: break;
     }
   }
+}
+
+bool SmartHandController::menuSetBacklash(uint8_t &axis)
+{
+  float backlash;
+  if (!DisplayMessageLX200(readBacklashLX200(axis, backlash))) return false;
+  char text[20];
+  sprintf(text, "Backlash Axis%u", axis);
+  if (display->UserInterfaceInputValueFloat(&buttonPad, text, "", &backlash, 0, 999, 3, 0, " arc-sec"))
+  {
+    return DisplayMessageLX200(writeBacklashLX200(axis, backlash),false);
+  }
+  return true;
 }
 
 void SmartHandController::menuLimits()
@@ -97,8 +108,6 @@ void SmartHandController::menuLimits()
       break;
     case 4:
       menuMeridianW();
-      break;
-    default:
       break;
     }
   }
@@ -183,5 +192,3 @@ void SmartHandController::menuPier()
     }
   }
 }
-#endif
-

@@ -8,6 +8,7 @@ GotoErrors validateGoto() {
   if (!axis1Enabled)                           return GOTO_ERR_STANDBY;
   if (parkStatus!=NotParked)                   return GOTO_ERR_PARK;
   if (guideDirAxis1 || guideDirAxis2)          return GOTO_ERR_IN_MOTION;
+  if (trackingSyncInProgress())                return GOTO_ERR_GOTO;
   if (trackingState==TrackingMoveTo)           return GOTO_ERR_GOTO;
   return GOTO_ERR_NONE;
 }
@@ -75,7 +76,7 @@ GotoErrors syncEqu(double RA, double Dec) {
 #endif
   } else {
     // always on the "east" side of pier - we're in the western sky and the HA's are positive
-    // this is the default in the polar-home position and also for MOUNT_TYPE_FORK and MOUNT_TYPE_ALTAZM.  MOUNT_TYPE_FORK_ALT ends up pierSideEast, but flips are allowed until aligned.
+    // this is the default in the polar-home position and also for MOUNT_TYPE_FORK and MOUNT_TYPE_ALTAZM.
     newPierSide=PierSideEast;
   }
 
@@ -332,7 +333,7 @@ GotoErrors goTo(double thisTargetAxis1, double thisTargetAxis2, double altTarget
   } else {
     if (getInstrPierSide()==PierSideNone) {
         // always on the "east" side of pier - we're in the western sky and the HA's are positive
-        // this is the default in the polar-home position and also for MOUNT_TYPE_FORK and MOUNT_TYPE_ALTAZM.  MOUNT_TYPE_FORK_ALT ends up pierSideEast, but flips are allowed until aligned.
+        // this is the default in the polar-home position and also for MOUNT_TYPE_FORK and MOUNT_TYPE_ALTAZM.
         thisPierSide=PierSideEast;
     }
   }

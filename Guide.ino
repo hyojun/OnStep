@@ -104,15 +104,15 @@ int backlashAxis2PriorToGuide=0;
 
 void reactivateBacklashComp() {
 #ifdef GUIDES_DISABLE_BACKLASH_ON
-  if (backlashAxis1PriorToGuide==0) { backlashAxis1PriorToGuide=backlashAxis1; cli(); backlashAxis1=0; sei(); }
-  if (backlashAxis2PriorToGuide==0) { backlashAxis2PriorToGuide=backlashAxis2; cli(); backlashAxis2=0; sei(); }
+  if (backlashAxis1PriorToGuide>0) { cli(); backlashAxis1=backlashAxis1PriorToGuide; sei(); backlashAxis1PriorToGuide=0; }
+  if (backlashAxis2PriorToGuide>0) { cli(); backlashAxis2=backlashAxis2PriorToGuide; sei(); backlashAxis2PriorToGuide=0; }
 #endif
 }
 
 void deactivateBacklashComp() {
 #ifdef GUIDES_DISABLE_BACKLASH_ON
-  if (backlashAxis1PriorToGuide>0) { cli(); backlashAxis1=backlashAxis1PriorToGuide; sei(); backlashAxis1PriorToGuide=0; }
-  if (backlashAxis2PriorToGuide>0) { cli(); backlashAxis2=backlashAxis2PriorToGuide; sei(); backlashAxis2PriorToGuide=0; }
+  if (backlashAxis1PriorToGuide==0) { backlashAxis1PriorToGuide=backlashAxis1; cli(); backlashAxis1=0; sei(); }
+  if (backlashAxis2PriorToGuide==0) { backlashAxis2PriorToGuide=backlashAxis2; cli(); backlashAxis2=0; sei(); }
 #endif
 }
 
@@ -201,6 +201,20 @@ void setGuideRate(int g) {
   if ((g<=GuideRate1x) && (currentPulseGuideRate!=g)) { currentPulseGuideRate=g; nv.update(EE_pulseGuideRate,g); }
   guideTimerCustomRateAxis1=0.0;
   guideTimerCustomRateAxis2=0.0;
+}
+
+// gets the rate for guide commands
+int getGuideRate() {
+  return currentGuideRate;
+}
+
+// gets the rate for pulse-guide commands
+int getPulseGuideRate() {
+#ifdef SEPARATE_PULSE_GUIDE_RATE_ON
+  return currentPulseGuideRate; 
+#else
+  return currentGuideRate;
+#endif
 }
 
 // enables the guide rate

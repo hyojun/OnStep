@@ -4,11 +4,18 @@
 #define HAL_NO_DOUBLE_PRECISION
 
 // This is for ~16MHz AVR processors or similar.
-// They can, however, run Motor Timer ISR's w/stepper driver signal timing met in one pass vs. two for faster processors
 #define HAL_SLOW_PROCESSOR
 
-// Lower limit (fastest) step rate in uS for this platform
-#define MaxRateLowerLimit 32
+// Set default timer mode unless specified
+#ifndef STEP_WAVE_FORM
+  #define STEP_WAVE_FORM PULSE
+#endif
+
+// Lower limit (fastest) step rate in uS for this platform (in SQW mode)
+#define HAL_MAXRATE_LOWER_LIMIT 51.2
+
+// Width of step pulse
+#define HAL_PULSE_WIDTH 10000
 
 // New symbols for the Serial ports so they can be remapped if necessary -----------------------------
 #ifndef MEGA2560_ARDUINO_SERIAL_ON

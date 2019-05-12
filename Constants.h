@@ -3,26 +3,48 @@
 
 #pragma once
 
-// some defines to help with configuration
+// coordinate mode for getting and setting RA/Dec
+#define OBSERVED_PLACE 1
+#define TOPOCENTRIC 2
+#define ASTROMETRIC_J2000 3
+#define TELESCOPE_COORDINATES TOPOCENTRIC
+
+// some defines to help with TMC2130 configuration
 #define TMC_LOWPWR      64
 #define TMC_STEALTHCHOP 32
 #define TMC_NINTPOL     16
 
-// Stepper Driver Models
+// Stepper driver models
 #define A4988   1
 #define DRV8825 2
-#define S109    2
-#define LV8729  3
-#define RAPS128 3
-#define TMC2100 4
-#define TMC2208 5
-#define ST820   6
+#define S109    3
+#define LV8729  4
+#define RAPS128 5
+#define TMC2100 6
+#define TMC2208 7
+#define ST820   8
 
 #define TMC2130 100
 #define TMC2130_QUIET 101  // these variations don't appear at run-time and are changed to "TMC2130"
 #define TMC2130_VQUIET 102
 #define TMC2130_QUIET_LOWPWR 103
 #define TMC2130_VQUIET_LOWPWR 104
+
+// Stepper driver minimum pulse width
+#define A4988_PULSE_WIDTH   1000
+#define DRV8825_PULSE_WIDTH 2000
+#define S109_PULSE_WIDTH    300
+#define LV8729_PULSE_WIDTH  500
+#define RAPS128_PULSE_WIDTH 5000 // 7000 is correct? appears to work with the Mega2560 at 5000?
+#define TMC2100_PULSE_WIDTH 103
+#define TMC2130_PULSE_WIDTH 103
+#define TMC2208_PULSE_WIDTH 103
+#define ST820_PULSE_WIDTH   20
+
+// Stepper driver wave forms
+#define SQUARE 1
+#define PULSE 2
+#define DEDGE 3
 
 // Stepper Driver Decay Mode Open
 #define OPEN 2
@@ -132,6 +154,7 @@ unsigned int StepsTMC2130[LEN_TMC2130][2] = { {1,8}, {2,7}, {4,6}, {8,5}, {16,4}
 #define GSB (E2END-100)
 #define EE_dcPwrAxis4  GSB+0   // 1
 #define EE_dcPwrAxis5  GSB+1   // 1
+#define EE_maxRateL    GSB+2   // 4
 
 // --------------------------------------------------------------------------------------------------------------------------
 // Unique identifier for the current initialization format for NV, do not change

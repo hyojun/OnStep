@@ -3,6 +3,12 @@
 // We define a more generic symbol, in case more Platform_Name boards based on different lines are supported
 #define __Platform_Name__
 
+// Lower limit (fastest) step rate in uS for this platform (in SQW mode)
+#define HAL_MAXRATE_LOWER_LIMIT 16
+
+// width of step pulse
+#define HAL_PULSE_WIDTH 500
+
 // New symbols for the Serial ports so they can be remapped if necessary -----------------------------
 #define SerialA Serial
 // SerialA is always enabled, SerialB and SerialC are optional

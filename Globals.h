@@ -54,7 +54,8 @@ volatile boolean PPSsynced = false;
   RateCompensation rateCompensation=RC_NONE;
 #endif
 
-long    maxRate = MaxRate*16L;
+long    maxRate = (double)MaxRate*16.0;
+double  MaxRateDef = (double)MaxRate;
 
 double  slewSpeed = 0;
 volatile long    timerRateAxis1 = 0;
@@ -113,19 +114,19 @@ double sinLat = 0.0;
 double longitude = 0.0;
 
 // fix UnderPoleLimit for fork mounts
-#if defined(MOUNT_TYPE_FORK) || defined(MOUNT_TYPE_FORK_ALT)
+#ifdef MOUNT_TYPE_FORK
 #undef UnderPoleLimit
 #define UnderPoleLimit 12
 #endif
 
 // Coordinates -------------------------------------------------------------------------------------------------------------
 #ifdef MOUNT_TYPE_GEM
-double celestialPoleAxis1  = 90.0;
+double homePositionAxis1  = 90.0;
 #endif
-#if defined(MOUNT_TYPE_FORK) || defined(MOUNT_TYPE_FORK_ALT) || defined(MOUNT_TYPE_ALTAZM)
-double celestialPoleAxis1  = 0.0;
+#if defined(MOUNT_TYPE_FORK) || defined(MOUNT_TYPE_ALTAZM)
+double homePositionAxis1  = 0.0;
 #endif
-double celestialPoleAxis2 = 90.0;
+double homePositionAxis2 = 90.0;
 // either 0 or (fabs(latitude))
 #define AltAzmDecStartPos (fabs(latitude))
 
@@ -133,7 +134,8 @@ volatile long posAxis1   = 0;                            // hour angle position 
 volatile long startAxis1 = 0;                            // hour angle of goto start position in steps
 volatile fixed_t targetAxis1;                            // hour angle of goto end   position in steps
 volatile byte dirAxis1   = 1;                            // stepping direction + or -
-double newTargetRA       = 0.0;                          // holds the RA for goTos
+double origTargetRA      = 0.0;                          // holds the RA for gotos before possible conversion to observed place
+double newTargetRA       = 0.0;                          // holds the RA for gotos after conversion to observed place
 fixed_t origTargetAxis1;
 #if defined(AXIS1_MODE) && defined(AXIS1_MODE_GOTO)
 volatile long stepAxis1=1;
@@ -145,7 +147,8 @@ volatile long posAxis2   = 0;                            // declination position
 volatile long startAxis2 = 0;                            // declination of goto start position in steps
 volatile fixed_t targetAxis2;                            // declination of goto end   position in steps
 volatile byte dirAxis2   = 1;                            // stepping direction + or -
-double newTargetDec      = 0.0;                          // holds the Dec for goTos
+double origTargetDec     = 0.0;                          // holds the Dec for gotos before possible conversion to observed place
+double newTargetDec      = 0.0;                          // holds the Dec for gotos after conversion to observed place
 long origTargetAxis2     = 0;
 #if defined(AXIS2_MODE) && defined(AXIS2_MODE_GOTO)
 volatile long stepAxis2=1;
@@ -201,9 +204,6 @@ boolean axis2Enabled             = false;
 byte meridianFlip = MeridianFlipAlways;
 #endif
 #ifdef MOUNT_TYPE_FORK
-byte meridianFlip = MeridianFlipAlign;
-#endif
-#ifdef MOUNT_TYPE_FORK_ALT
 byte meridianFlip = MeridianFlipNever;
 #endif
 #ifdef MOUNT_TYPE_ALTAZM
@@ -218,6 +218,7 @@ PreferredPierSide preferredPierSide = PPS_BEST;
 #define Parking          1
 #define Parked           2
 #define ParkFailed       3
+#define ParkUnknown      4
 byte    parkStatus       = NotParked;
 boolean parkSaved        = false;
 boolean atHome           = true;
@@ -231,7 +232,7 @@ unsigned long baudRate[10] = {115200,56700,38400,28800,19200,14400,9600,4800,240
 // Guide command ------------------------------------------------------------------------------------------------------------
 #define GuideRate1x        2
 #ifndef GuideRateDefault
-#define GuideRateDefault   6  // 24x
+#define GuideRateDefault   6  // 20x
 #endif
 #define GuideRateNone      255
 #define RateToDegPerSec  (1000000.0/(double)StepsPerDegreeAxis1)
@@ -239,8 +240,9 @@ unsigned long baudRate[10] = {115200,56700,38400,28800,19200,14400,9600,4800,240
 #define RateToXPerSec    (RateToASPerSec/15.0)
 double  slewRateX     =  (RateToXPerSec/MaxRate)*2.5; // 5x for exponential factor average rate and / 2x for default MaxRate
 double  accXPerSec    =  (slewRateX/DegreesForAcceleration);
-double  guideRates[10]={3.75,7.5,15,30,60,120,360,720,(RateToASPerSec/MaxRate)/2.0,RateToASPerSec/MaxRate};
-//                      .25X .5x 1x 2x 4x  8x 24x 48x       half-MaxRate                   MaxRate
+double  guideRates[10]={3.75,7.5,15,30,60,120,300,720,(RateToASPerSec/MaxRate)/2.0,RateToASPerSec/MaxRate};
+//                      .25X .5x 1x 2x 4x  8x 20x 48x       half-MaxRate                   MaxRate
+//                         0   1  2  3  4   5   6   7                  8                         9
 
 byte currentGuideRate        = GuideRateDefault;
 byte currentPulseGuideRate   = GuideRate1x;

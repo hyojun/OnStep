@@ -72,9 +72,6 @@ void initStartupValues() {
   meridianFlip = MeridianFlipAlways;
   #endif
   #ifdef MOUNT_TYPE_FORK
-  meridianFlip = MeridianFlipAlign;
-  #endif
-  #ifdef MOUNT_TYPE_FORK_ALT
   meridianFlip = MeridianFlipNever;
   #endif
   #ifdef MOUNT_TYPE_ALTAZM
@@ -251,10 +248,10 @@ void initReadNvValues() {
 
   // the polar home position
 #ifdef MOUNT_TYPE_ALTAZM
-  celestialPoleAxis2=AltAzmDecStartPos;
-  if (latitude<0) celestialPoleAxis1=180.0; else celestialPoleAxis1=0.0;
+  homePositionAxis2=AltAzmDecStartPos;
+  if (latitude<0) homePositionAxis1=180.0; else homePositionAxis1=0.0;
 #else
-  if (latitude<0) celestialPoleAxis2=-90.0; else celestialPoleAxis2=90.0;
+  if (latitude<0) homePositionAxis2=-90.0; else homePositionAxis2=90.0;
 #endif
   InitStartPosition();
 
@@ -311,16 +308,30 @@ void initReadNvValues() {
   // get the Park status
   parkSaved=nv.read(EE_parkSaved);
   parkStatus=nv.read(EE_parkStatus);
+  // tried to park but crashed?
+  if (parkStatus==Parking) { parkStatus=ParkFailed; nv.write(EE_parkStatus,parkStatus); }
 
   // get the pulse-guide rate
   currentPulseGuideRate=nv.read(EE_pulseGuideRate); if (currentPulseGuideRate>GuideRate1x) currentPulseGuideRate=GuideRate1x;
 
-  // get the Goto rate and constrain values to the limits (1/2 to 2X the MaxRate,) maxRate is in 16MHz clocks but stored in micro-seconds
-  maxRate=nv.readInt(EE_maxRate)*16;
-  if (maxRate<(MaxRate/2L)*16L) maxRate=(MaxRate/2L)*16L;
-  if (maxRate>(MaxRate*2L)*16L) maxRate=(MaxRate*2L)*16L;
-#if !defined(RememberMaxRate_ON) && !defined(REMEMBER_MAX_RATE_ON)
-  if (maxRate!=MaxRate*16L) { maxRate=MaxRate*16L; nv.writeInt(EE_maxRate,(int)(maxRate/16L)); }
+  // set the default MaxRate based on the desired goto speed
+  MaxRateDef=MaxRate;
+  if (MaxRateDef<maxRateLowerLimit()/16.0) MaxRateDef=maxRateLowerLimit()/16.0;
+
+  // get the max goto rate
+  maxRate=(int16_t)nv.readInt(EE_maxRate)*16; // maxRate is in 16MHz clocks but stored in micro-seconds
+  // check for flag that maxRate is stored in EE_maxRateL, if not move it there
+  if (maxRate==-16) maxRate=nv.readLong(EE_maxRateL); else { nv.writeInt(EE_maxRate,-1); nv.writeLong(EE_maxRateL,maxRate); }
+  // constrain values to the limits (1/2 to 2X the MaxRateDef) and platform limits
+  if (maxRate<(double)MaxRateDef*8.0) maxRate=(double)MaxRateDef*8.0;
+  if (maxRate>(double)MaxRateDef*32.0) maxRate=(double)MaxRateDef*32.0;
+  if (maxRate<maxRateLowerLimit()) maxRate=maxRateLowerLimit();
+  
+#ifndef REMEMBER_SLEW_RATE_ON
+  if (maxRate!=(long)((double)MaxRateDef*16.0)) {
+    maxRate=(double)MaxRateDef*16.0; 
+    nv.writeLong(EE_maxRateL,maxRate);
+  }
 #endif
   setAccelerationRates(maxRate); // set the new acceleration rate
 
@@ -360,8 +371,8 @@ void InitStartPosition() {
   blAxis1            = 0;
   blAxis2            = 0;
   sei();
-  setIndexAxis1(celestialPoleAxis1,PierSideEast);
-  setIndexAxis2(celestialPoleAxis2,PierSideEast);
+  setIndexAxis1(homePositionAxis1,PierSideEast);
+  setIndexAxis2(homePositionAxis2,PierSideEast);
 }
 
 void initWriteNvValues() {
@@ -416,8 +427,10 @@ void initWriteNvValues() {
     nv.write(EE_pulseGuideRate,GuideRate1x);
     
     // init the default maxRate
-    if (maxRate<2L*16L) maxRate=2L*16L; if (maxRate>10000L*16L) maxRate=10000L*16L;
-    nv.writeInt(EE_maxRate,(int)(maxRate/16L));
+    if (maxRate<2L*16L) maxRate=2L*16L; 
+    if (maxRate>10000L*16L) maxRate=10000L*16L;
+    if (maxRate<maxRateLowerLimit()) maxRate=maxRateLowerLimit();
+    nv.writeInt(EE_maxRate,-1); nv.writeLong(EE_maxRateL,maxRate);
 
     // init autoMeridianFlip
     nv.write(EE_autoMeridianFlip,autoMeridianFlip);
@@ -436,6 +449,9 @@ void initWriteNvValues() {
 #ifdef AXIS5_DC_MODE_ON
     nv.write(EE_dcPwrAxis5,50);
 #endif
+
+    // clear the library/catalogs
+    Lib.clearAll();
 
     // finally, stop the init from happening again
     nv.writeLong(EE_autoInitKey,autoInitKey);
@@ -469,10 +485,10 @@ unsigned int translateMicrosteps(int axis, int DriverModel, unsigned int Microst
     case A4988:
       Mode = searchTable(StepsA4988, LEN_A4988, Microsteps);
       break;
-    case DRV8825:
+	case DRV8825: case S109:
       Mode = searchTable(StepsDRV8825, LEN_DRV8825, Microsteps);
       break;
-    case LV8729:
+	case LV8729: case RAPS128:
       Mode = searchTable(StepsLV8729, LEN_LV8729, Microsteps);
       break;
     case ST820:

@@ -8,6 +8,11 @@
 #define SH1106 0
 #define SSD1306 1
 
+// coordinate mode for getting and setting RA/Dec
+#define OBSERVED_PLACE 1
+#define TOPOCENTRIC 2
+#define ASTROMETRIC_J2000 3
+
 // Single byte guide commands
 #define ccMe 14
 #define ccMw 15
@@ -18,14 +23,17 @@
 #define ccQn 20
 #define ccQs 21
 
+enum MENU_RESULT { MR_OK, MR_CANCEL, MR_QUIT };
+
 class SmartHandController
 {
 public:
   enum OLED { OLED_SH1106, OLED_SSD1306 };
+  int telescopeCoordinates=1;
+  boolean hrs24=USE_24HR_TIME;
+
   void update();
   void drawIntro();
-  void drawLoad();
-  void drawReady();
   void setup(const char version[], const int pin[7], const bool active[7], const int SerialBaud, const OLED model);
   void tickButtons();
 private:
@@ -36,12 +44,12 @@ private:
 
   Telescope telInfo;
   char _version[20]="Version ?";
+  char briefMessage[20]="";
 
   void updateMainDisplay( u8g2_uint_t page);
   bool sleepDisplay = false;
   bool lowContrast = false;
   uint8_t maxContrast = 255;
-  bool wifiOn = false;
   bool powerCylceRequired = false;
   bool buttonCommand = false;
   bool moveNorth=false;
@@ -58,31 +66,55 @@ private:
   uint8_t current_selection_L2 = 1;
   uint8_t current_selection_L3 = 1;
   uint8_t current_selection_L4 = 1;
-  uint8_t current_selection_speed = 5;
-  unsigned short current_selection_SolarSys = 1;
+#ifdef UTILITY_LIGHT 
+  uint8_t current_selection_utility_light = 5;
+#endif
+  bool    current_selection_filter_above = true;
+  uint8_t current_selection_filter_con = 1;
+  uint8_t current_selection_filter_type = 1;
+  uint8_t current_selection_filter_byMag = 1;
+  uint8_t current_selection_filter_nearby = 1;
+  uint8_t current_selection_filter_dblmin = 1;
+  uint8_t current_selection_filter_dblmax = 1;
+  uint8_t current_selection_filter_varmax = 1;
+  uint8_t activeGuideRate = 5;
+  uint8_t featureKeyMode = 1; // guide rate
+
   long angleRA = 0;
   long angleDEC = 0;
 
+  void initInitNvValues();
+  void initReadNvValues();
+
   void menuMain();
   void menuSpeedRate();
-  void menuSyncGoto(bool sync);
-  void menuSolarSys(bool sync);
-  void menuHerschel(bool sync);
-  void menuMessier(bool sync);
+  
+  MENU_RESULT menuSyncGoto(bool sync);
+  MENU_RESULT subMenuSyncGoto(char sync, int subMenuNum);
+  MENU_RESULT menuCatalog(bool sync, int number);
+  MENU_RESULT menuSolarSys(bool sync);
+  MENU_RESULT menuFilters();
+  void setCatMgrFilters();
+  MENU_RESULT menuFilterCon();
+  MENU_RESULT menuFilterType();
+  MENU_RESULT menuFilterByMag();
+  MENU_RESULT menuFilterNearby();
+  MENU_RESULT menuFilterDblMinSep();
+  MENU_RESULT menuFilterDblMaxSep();
+  MENU_RESULT menuFilterVarMaxPer();
+  MENU_RESULT menuUser(bool sync);
+  MENU_RESULT menuRADec(bool sync);
+  
   void menuAlignment();
   void menuParking();
   void menuPEC();
   void menuGotoSpeed();
+  void menuBacklash();
+  bool menuSetBacklash(uint8_t &axis);
   void menuPier();
-  void menuStar(bool sync);
   bool SelectStarAlign();
-  void menuRADec(bool sync);
   void menuSettings();
   void menuMount();
-  void menuMountType();
-  void menuPredefinedMount();
-  void menuAltMount();
-  void menuMotor(uint8_t idx);
   void menuSite();
   void menuSites();
   void menuLocalDateTime();
@@ -93,26 +125,18 @@ private:
   void menuContrast();
   void menuDimTimeout();
   void menuBlankTimeout();
+  void menuFocuser1();
+  void menuFocuser2();
+  void menuRotator();
   void menuLatitude();
   void menuLongitude();
   void menuZone();
   void menuLimits();
-  void menuWifi();
   void menuHorizon();
   void menuOverhead();
   void menuMeridianE();
   void menuMeridianW();
-
-  bool menuSetStepperGearBox(uint8_t &axis, unsigned short &worm);
-  bool menuSetReverse(uint8_t &axis);
-  void menuBacklash();
-  bool menuSetBacklash(uint8_t &axis);
-  bool menuSetTotGear(uint8_t &axis);
-  bool menuSetStepPerRot(uint8_t &axis);
-  bool menuSetMicro(uint8_t &axis);
-  bool menuSetLowCurrent(uint8_t &axis);
-  bool menuSetHighCurrent(uint8_t &axis);
-  void DisplayMotorSettings(uint8_t &axis);
+  void menuFirmware();
 
   void DisplayMessage(const char* txt1, const char* txt2 = NULL, int duration = 0);
   void DisplayLongMessage(const char* txt1, const char* txt2 = NULL, const char* txt3 = NULL, const char* txt4 = NULL, int duration = 0);

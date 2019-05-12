@@ -3,9 +3,11 @@
 // We define a more generic symbol, in case more STM32 boards based on different lines are supported
 #define __ARM_STM32__
 
-// Lower limit (fastest) step rate in uS for this platform -------------------------------------------
-// the exact model should be detected and these tailored to each, but this is a good starting point
-#define MaxRateLowerLimit 16
+// Lower limit (fastest) step rate in uS for this platform (in SQW mode)
+#define HAL_MAXRATE_LOWER_LIMIT 20
+
+// Width of step pulse
+#define HAL_PULSE_WIDTH 1200
 
 #include <HardwareTimer.h>
 
@@ -53,7 +55,9 @@
 #define HAL_Wire Wire
 
 // Non-volatile storage ------------------------------------------------------------------------------
-#if defined(NV_AT24C32)
+#if defined(NV_AT24C32_C)
+  #include "../drivers/NV_I2C_EEPROM_AT24C32_C.h"
+#elif defined(NV_AT24C32)
   #include "../drivers/NV_I2C_EEPROM_AT24C32.h"
 #elif defined(NV_MB85RC256V)
   #include "../drivers/NV_I2C_FRAM_MB85RC256V.h"

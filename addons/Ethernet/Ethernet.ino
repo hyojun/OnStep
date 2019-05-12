@@ -2,7 +2,7 @@
  * Title       OnStep Ethernet Server
  * by          Howard Dutton
  *
- * Copyright (C) 2016 to 2018 Howard Dutton
+ * Copyright (C) 2016 to 2019 Howard Dutton
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@
 #define FirmwareTime          __TIME__
 #define FirmwareVersionMajor  "1"
 #define FirmwareVersionMinor  "6"
-#define FirmwareVersionPatch  "b"
+#define FirmwareVersionPatch  "d"
 
 #define Version FirmwareVersionMajor "." FirmwareVersionMinor FirmwareVersionPatch
 
@@ -63,8 +63,8 @@ Encoders encoders;
 
 // macros to help with sending webpage data
 #define sendHtmlStart()
-#define sendHtml(x) client->print(x)
-#define sendHtmlDone(x) client->print(x);
+#define sendHtml(x) client->print(x); x=""
+#define sendHtmlDone(x) client->print(x); x=""
 
 int WebTimeout=TIMEOUT_WEB;
 int CmdTimeout=TIMEOUT_CMD;

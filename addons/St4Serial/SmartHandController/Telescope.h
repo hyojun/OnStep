@@ -1,11 +1,10 @@
 #pragma once
 #include <Arduino.h>
-#include "Catalog.h"
 
 class Telescope
 {
 public:
-  enum Errors { ERR_NONE, ERR_MOTOR_FAULT, ERR_ALT, ERR_LIMIT_SENSE, ERR_DEC, ERR_AZM, ERR_UNDER_POLE, ERR_MERIDIAN, ERR_SYNC };
+  enum Errors {ERR_NONE, ERR_MOTOR_FAULT, ERR_ALT, ERR_LIMIT_SENSE, ERR_DEC, ERR_AZM, ERR_UNDER_POLE, ERR_MERIDIAN, ERR_SYNC, ERR_PARK, ERR_GOTO_SYNC};
 
   enum AlignMode { ALIM_OFF, ALIM_ONE, ALIM_TWO, ALIM_THREE, ALIM_FOUR, ALIM_FIVE, ALIM_SIX, ALIM_SEVEN, ALIM_EIGHT, ALIM_NINE };
   enum AlignState {
@@ -22,8 +21,10 @@ public:
   };
   enum Mount { GEM, FEM };
   enum TrackState { TRK_OFF, TRK_ON, TRK_SLEWING, TRK_UNKNOW };
-  enum ParkState { PRK_UNPARKED, PRK_PARKED, PRK_FAILED, PRK_PARKING, PRK_UNKNOW };
-  enum PierState { PIER_E, PIER_W, PIER_UNKNOW };
+  enum TrackRate { TR_SIDEREAL, TR_LUNAR, TR_SOLAR, TR_KING, TR_UNKNOW };
+  enum RateCompensation {RC_NONE, RC_REFR_RA, RC_REFR_BOTH, RC_FULL_RA, RC_FULL_BOTH};
+  enum ParkState { PRK_UNPARKED, PRK_PARKING, PRK_PARKED, PRK_FAILED, PRK_UNKNOW };
+  enum PierState { PIER_NONE, PIER_E, PIER_W, PIER_UNKNOW };
 
 public: 
   AlignState      align = ALI_OFF;
@@ -39,11 +40,10 @@ public:
   char TempAz[20];
   char TempAlt[20];
   unsigned long lastStateAzAlt;
-  char TempLocalTime[20];
+  char TempUniversalTime[20];
   char TempSidereal[20];
   unsigned long lastStateTime;
   char TelStatus[20];
-  char sideofpier[20];
   unsigned long lastStateTel;
   unsigned long updateSeq=0;
 public:
@@ -54,13 +54,14 @@ public:
   bool hasInfoAlt = false;
   bool hasInfoUTC = false;
   bool hasInfoSidereal = false;
-  bool hasPierInfo = false;
   bool hasTelStatus = false;
   unsigned long lastState;
   void updateRaDec(boolean immediate=false);
   void updateAzAlt(boolean immediate=false);
   void updateTime(boolean immediate=false);
   void updateTel(boolean immediate=false);
+  bool getRA(double &RA);
+  bool getDec(double &Dec);
   double getLstT0();
   double getLat();
   int getAlignStars(int *maxStars, int *thisStar, int *numStars);
@@ -73,10 +74,22 @@ public:
   bool isGuiding();
   bool isMountGEM();
   bool isMountAltAz();
+  bool getT(double &T);
+  bool getP(double &P);
+  bool getH(double &H);
+  bool getDP(double &DP);
   PierState getPierState();
+  TrackRate getTrackingRate();
+  RateCompensation getRateCompensation();
+  int getGuideRate();
+  int getPulseGuideRate();
   Errors getError();
+  bool hasFocuser1();
+  bool hasFocuser2();
+  bool hasRotator();
+  bool hasDeRotator();
+  bool hasReticle();
   bool addStar();
 
 private:
 };
-

@@ -1,8 +1,13 @@
 // Platform setup ------------------------------------------------------------------------------------
 
-// Lower limit (fastest) step rate in uS for this platform -------------------------------------------
-#define MaxRate_LowerLimit 16
+// This is for fast processors with hardware FP
 #define HAL_FAST_PROCESSOR
+
+// Lower limit (fastest) step rate in uS for this platform (in SQW mode)
+#define HAL_MAXRATE_LOWER_LIMIT 16
+
+// Width of step pulse
+#define HAL_PULSE_WIDTH 2500
 
 // New symbols for the Serial ports so they can be remapped if necessary -----------------------------
 #define SerialA Serial
@@ -33,6 +38,12 @@
 #ifndef WIRE_END_SUPPORT
 #warning "The stock ESP32 Release 1.0.0 Wire.h library doesn't work.  See the above HAL_ESP32.h file for instructions to correct this!"
 #endif
+
+// Pretend AnalogWrite
+void analogWrite(int pin, int value) {
+  if (value==0) digitalWrite(pin,LOW);
+  if (value==255) digitalWrite(pin,HIGH);
+}
 
 //--------------------------------------------------------------------------------------------------
 // General purpose initialize for HAL

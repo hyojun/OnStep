@@ -2,7 +2,7 @@
  * Title       OnStep
  * by          Howard Dutton
  *
- * Copyright (C) 2012 to 2018 Howard Dutton
+ * Copyright (C) 2012 to 2019 Howard Dutton
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@
 // firmware info, these are returned by the ":GV?#" commands
 #define FirmwareDate          __DATE__
 #define FirmwareVersionMajor  1
-#define FirmwareVersionMinor  19
+#define FirmwareVersionMinor  22      // minor version 0 to 99
 #define FirmwareVersionPatch  "d"     // for example major.minor patch: 1.3c
 #define FirmwareVersionConfig 2       // internal, for tracking configuration file changes
 #define FirmwareName          "On-Step"
@@ -50,14 +50,7 @@
 #include <math.h>
 
 #include "Constants.h"
-
-#include "Config.Classic.h"
-#include "Config.MaxESP2.h"
-#include "Config.MaxPCB.h"
-#include "Config.Mega2560Alt.h"
-#include "Config.MiniPCB.h"
-#include "Config.Ramps14.h"
-#include "Config.STM32.h"
+#include "Config.h"
 #include "src/HAL/HAL.h"
 #include "Validate.h"
 
@@ -82,9 +75,14 @@
 
 // ---------------------------------------------------------------------------------------------------
 
-#include "src/lib/SoftSPI.h"
 #include "src/lib/FPoint.h"
+#include "Globals.h"
+
+#include "src/lib/SoftSPI.h"
 #include "src/lib/Julian.h"
+#include "src/lib/Misc.h"
+#include "src/lib/Sound.h"
+
 #ifdef MODE_SWITCH_BEFORE_SLEW_SPI
 #include "src/lib/TMC2130.h"
 //               SS      ,SCK     ,MISO     ,MOSI
@@ -92,7 +90,6 @@ tmc2130 tmcAxis1(Axis1_M2,Axis1_M1,Axis1_Aux,Axis1_M0);
 tmc2130 tmcAxis2(Axis2_M2,Axis2_M1,Axis2_Aux,Axis2_M0);
 #endif
 
-#include "Globals.h"
 #include "src/lib/Coord.h"
 
 #include "src/lib/Library.h"
@@ -137,6 +134,8 @@ weather ambient;
 #define INIT_KEY false
 
 void setup() {
+  // take a half-second to let any connected devices come up before we start setting up pins
+  delay(500);
 
 #ifdef DEBUG_ON
   // Initialize USB serial debugging early, so we can use DebugSer.print() for debugging, if needed
@@ -201,18 +200,24 @@ void setup() {
   // autostart tracking
 #if defined(AUTOSTART_TRACKING_ON)
   #if !defined(MOUNT_TYPE_ALTAZM)
-    // telescope should be set in the polar home (CWD) for a starting point
-    setHome();
-  
-    // orientation is unknown
-    safetyLimitsOn=false;
-  
+
+    // tailor behaviour depending on RTC presence
+    if (!urtc.active) {
+      setHome();
+      safetyLimitsOn=false;
+    } else {
+      if (parkStatus==Parked) unPark(true); else setHome();
+    }
+    
     // start tracking
     trackingState=TrackingSidereal;
     enableStepperDrivers();
   #else
     #warning "AUTOSTART_TRACKING_ON ignored for MOUNT_TYPE_ALTAZM"
   #endif
+#else
+  // unpark without tracking, if parked
+  if (parkStatus==Parked) unPark(false);
 #endif
 
   // start rotator if present
@@ -309,7 +314,7 @@ void loop2() {
     siderealTimer=tempLst;
 
 #ifdef ESP32
-    timerSuper();
+    timerSupervisor(true);
 #endif
     
 #ifndef MOUNT_TYPE_ALTAZM
@@ -382,33 +387,33 @@ void loop2() {
     }
 #endif
 
-    if (safetyLimitsOn) {
-      // check for fault signal, stop any slew or guide and turn tracking off
+    // check for fault signal, stop any slew or guide and turn tracking off
 #ifdef AXIS1_FAULT
   #if AXIS1_FAULT==LOW
-      faultAxis1=(digitalRead(Axis1_FAULT)==LOW);
+    faultAxis1=(digitalRead(Axis1_FAULT)==LOW);
   #endif
   #if AXIS1_FAULT==HIGH
-      faultAxis1=(digitalRead(Axis1_FAULT)==HIGH);
+    faultAxis1=(digitalRead(Axis1_FAULT)==HIGH);
   #endif
   #if AXIS1_FAULT==TMC2130
-      if (lst%2==0) faultAxis1=tmcAxis1.error();
+    if (lst%2==0) faultAxis1=tmcAxis1.error();
   #endif
 #endif
 #ifdef AXIS2_FAULT
   #if AXIS2_FAULT==LOW
-      faultAxis2=(digitalRead(Axis2_FAULT)==LOW);
+    faultAxis2=(digitalRead(Axis2_FAULT)==LOW);
   #endif
   #if AXIS2_FAULT==HIGH
-      faultAxis2=(digitalRead(Axis2_FAULT)==HIGH);
+    faultAxis2=(digitalRead(Axis2_FAULT)==HIGH);
   #endif
   #if AXIS2_FAULT==TMC2130
-      if (lst%2==1) faultAxis2=tmcAxis2.error();
+    if (lst%2==1) faultAxis2=tmcAxis2.error();
   #endif
 #endif
 
-      if (faultAxis1 || faultAxis2) { lastError=ERR_MOTOR_FAULT; if (trackingState==TrackingMoveTo) { if (!abortSlew) abortSlew=StartAbortSlew; } else { trackingState=TrackingNone; if (guideDirAxis1) guideDirAxis1='b'; if (guideDirAxis2) guideDirAxis2='b'; } }
+    if (faultAxis1 || faultAxis2) { lastError=ERR_MOTOR_FAULT; if (trackingState==TrackingMoveTo) { if (!abortSlew) abortSlew=StartAbortSlew; } else { trackingState=TrackingNone; if (guideDirAxis1) guideDirAxis1='b'; if (guideDirAxis2) guideDirAxis2='b'; } }
 
+    if (safetyLimitsOn) {
       // check altitude overhead limit and horizon limit
       if ((currentAlt<minAlt) || (currentAlt>maxAlt)) { lastError=ERR_ALT; stopLimit(); }
     }
@@ -435,6 +440,9 @@ void loop2() {
 #ifdef FOCUSER2_ON
   foc2.follow(isSlewing());
 #endif
+
+  // FASTEST PPOLLING ----------------------------------------------------------------------------------
+  if (!isSlewing()) nv.poll();
  
   // WORKLOAD MONITORING -------------------------------------------------------------------------------
   long this_loop_micros=micros(); 
@@ -538,9 +546,6 @@ void loop2() {
 
     // update weather info
     if (!isSlewing()) ambient.poll();
-
-    // update NV info, if required
-    if (!isSlewing()) nv.poll();
 
   } else {
     // COMMAND PROCESSING --------------------------------------------------------------------------------
